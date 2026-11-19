@@ -2,7 +2,7 @@
 Qwen3Guard-0.6B MLX Security Model Adapter.
 
 Evaluates MCP tool call parameters and code payloads using the Apple Silicon native
-mlx-lm framework and Alibaba Cloud's dedicated safety SLM (Qwen/Qwen3Guard-Gen-0.6B).
+mlx-lm framework and Alibaba Cloud's dedicated AI Guard model (Qwen/Qwen3Guard-Gen-0.6B).
 """
 
 import json

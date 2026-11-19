@@ -4,15 +4,12 @@ This document indexes all vertical slice issues (tracer bullets) across project 
 
 ---
 
-## SPEC-0004: Multi-SLM L2 Adapters & Comparative Benchmark Architecture
-
-Parent Specification: [SPEC-0004: Multi-SLM Evaluation & MCP Guard](../specs/multi-slm-evaluation-and-mcp-guard-spec.md)  
-Architectural Decision: [ADR 0007: Multi-SLM L2 Adapters & Benchmark Architecture](../adr/0007-multi-slm-l2-adapter-and-benchmark-architecture.md)
+## SPEC-0004: Multi-Model L2 Adapters & Comparative Benchmark Architecture
 
 | Issue ID | Title | Blocked by | Status |
 | :--- | :--- | :--- | :--- |
 | **[ISSUE-009](./ISSUE-009-decoupled-adapter-core-and-qwen-coder-adapter.md)** | Decoupled Adapter Core & Qwen2.5-Coder Model Adapter | *None (Immediate)* | ✅ Done |
-| **[ISSUE-010](./ISSUE-010-agent-and-tool-safety-adapters.md)** | Agent & Tool Safety SLM Adapters (Granite Guardian & Llama Guard 3) | [ISSUE-009](./ISSUE-009-decoupled-adapter-core-and-qwen-coder-adapter.md) | ✅ Done |
+| **[ISSUE-010](./ISSUE-010-agent-and-tool-safety-adapters.md)** | Agent & Tool Safety AI Guard Adapters (Granite Guardian & Llama Guard 3) | [ISSUE-009](./ISSUE-009-decoupled-adapter-core-and-qwen-coder-adapter.md) | ✅ Done |
 | **[ISSUE-011](./ISSUE-011-ultra-fast-injection-classifier-adapter.md)** | Ultra-Fast Injection Classifier Adapter (Prompt-Guard-86M) | [ISSUE-009](./ISSUE-009-decoupled-adapter-core-and-qwen-coder-adapter.md) | ✅ Done |
 | **[ISSUE-012](./ISSUE-012-standalone-fastmcp-guard-factory-and-servers.md)** | Standalone FastMCP Guard Factory & Zero-Flag Executables | [ISSUE-009](./ISSUE-009-decoupled-adapter-core-and-qwen-coder-adapter.md), [ISSUE-010](./ISSUE-010-agent-and-tool-safety-adapters.md), [ISSUE-011](./ISSUE-011-ultra-fast-injection-classifier-adapter.md) | ✅ Done |
 | **[ISSUE-013](./ISSUE-013-two-phased-comparative-benchmark-runner-and-leaderboard.md)** | Two-Phased Comparative Benchmark Runner & CLI Leaderboard Matrix | [ISSUE-009](./ISSUE-009-decoupled-adapter-core-and-qwen-coder-adapter.md), [ISSUE-010](./ISSUE-010-agent-and-tool-safety-adapters.md), [ISSUE-011](./ISSUE-011-ultra-fast-injection-classifier-adapter.md) | ✅ Done |

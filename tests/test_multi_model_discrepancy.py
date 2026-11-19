@@ -3,7 +3,7 @@ test_multi_model_discrepancy.py
 
 Integration tests for Cross-Model Discrepancy Matrix & Comparison API (ISSUE-014).
 Validates:
-1. /api/runs returns multi-SLM runs metadata (Qwen, Granite, Prompt Guard, Laya).
+1. /api/runs returns multi-model AI Guard runs metadata (Qwen, Granite, Prompt Guard, Laya).
 2. /api/runs/{run_a}/compare/{run_b} computes cross-model agreement rates and discrepancy lists.
 3. Filtering by disagreement categories (e.g. a_missed_b_caught, fp_diff).
 4. Full metadata and tool argument payload retention for Case Detail Drawer inspection.

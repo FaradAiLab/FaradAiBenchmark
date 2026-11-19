@@ -1,9 +1,5 @@
 # ISSUE-012: Standalone FastMCP Guard Factory & Zero-Flag Executables
 
-## Parent
-- **Specification:** [SPEC-0004: Multi-SLM L2 Adapters, FastMCP Factory, and Comparative Benchmark Architecture](../specs/multi-slm-evaluation-and-mcp-guard-spec.md)
-- **Architectural Decision:** [ADR 0007: Multi-SLM L2 Adapters and Comparative Benchmark Architecture](../adr/0007-multi-slm-l2-adapter-and-benchmark-architecture.md)
-
 ## What to build
 Build the shared `guard_mcp_factory.py` builder and generate standalone, zero-flag FastMCP executable servers for each model adapter so they can be plugged into IDEs (Cursor, Claude Code) and `FaradAiWire` via standard JSON-RPC over stdio.
 
@@ -32,5 +28,5 @@ This vertical slice includes:
 
 ## Blocked by
 - [ISSUE-009: Decoupled Adapter Core & Qwen2.5-Coder Model Adapter](./ISSUE-009-decoupled-adapter-core-and-qwen-coder-adapter.md)
-- [ISSUE-010: Agent & Tool Safety SLM Adapters](./ISSUE-010-agent-and-tool-safety-adapters.md)
+- [ISSUE-010: Agent & Tool Safety AI Guard Adapters](./ISSUE-010-agent-and-tool-safety-adapters.md)
 - [ISSUE-011: Ultra-Fast Injection Classifier Adapter](./ISSUE-011-ultra-fast-injection-classifier-adapter.md)

@@ -1,9 +1,5 @@
 # ISSUE-013: Two-Phased Comparative Benchmark Runner & CLI Leaderboard Matrix
 
-## Parent
-- **Specification:** [SPEC-0004: Multi-SLM L2 Adapters, FastMCP Factory, and Comparative Benchmark Architecture](../specs/multi-slm-evaluation-and-mcp-guard-spec.md)
-- **Architectural Decision:** [ADR 0007: Multi-SLM L2 Adapters and Comparative Benchmark Architecture](../adr/0007-multi-slm-l2-adapter-and-benchmark-architecture.md)
-
 ## What to build
 Build the matrix benchmark orchestrator (`benchmark_matrix.py`) that executes two-phased evaluations (200-case smoke test and 2000+ full master pool run), clears Apple Silicon unified memory between models, records historical run metrics into DuckDB, and renders a Rich-formatted Security Leaderboard table.
 
@@ -28,5 +24,5 @@ This vertical slice includes:
 
 ## Blocked by
 - [ISSUE-009: Decoupled Adapter Core & Qwen2.5-Coder Model Adapter](./ISSUE-009-decoupled-adapter-core-and-qwen-coder-adapter.md)
-- [ISSUE-010: Agent & Tool Safety SLM Adapters](./ISSUE-010-agent-and-tool-safety-adapters.md)
+- [ISSUE-010: Agent & Tool Safety AI Guard Adapters](./ISSUE-010-agent-and-tool-safety-adapters.md)
 - [ISSUE-011: Ultra-Fast Injection Classifier Adapter](./ISSUE-011-ultra-fast-injection-classifier-adapter.md)

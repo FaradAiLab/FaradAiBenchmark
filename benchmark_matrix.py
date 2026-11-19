@@ -2,7 +2,7 @@
 """
 benchmark_matrix.py
 
-Two-Phased Multi-SLM Comparative Benchmark Runner & Security Leaderboard Matrix (ISSUE-013).
+Two-Phased Multi-Model Comparative Benchmark Runner & Security Leaderboard Matrix (ISSUE-013).
 Sequentially evaluates security models on Apple Silicon (MLX & PyTorch MPS), flushes unified memory,
 records run summaries and case-level predictions into DuckDB, and prints a comparative Rich leaderboard.
 """
@@ -365,7 +365,7 @@ def render_leaderboard(results: list[dict[str, Any]]) -> None:
     results_sorted = sorted(results, key=lambda x: (x["f1_score"], x["accuracy"]), reverse=True)
 
     table = Table(
-        title="🏆 Farad Ai Multi-SLM Security Benchmark Leaderboard",
+        title="🏆 Farad Ai Multi-Model AI Guard Benchmark Leaderboard",
         header_style="bold magenta",
         show_lines=True,
     )
@@ -418,7 +418,7 @@ def render_leaderboard(results: list[dict[str, Any]]) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Multi-SLM Comparative Benchmark Matrix Runner")
+    parser = argparse.ArgumentParser(description="Multi-Model Comparative AI Guard Benchmark Matrix Runner")
     parser.add_argument("--smoke", action="store_true", help="Run 200-case smoke test suite")
     parser.add_argument("--full", action="store_true", help="Run complete benchmark dataset")
     parser.add_argument("--limit", type=int, default=None, help="Limit number of test cases")
@@ -549,7 +549,7 @@ def main() -> None:
             f"• Models ({len(target_models)}): [yellow]{', '.join(target_models)}[/yellow]\n"
             f"• Dataset: [white]{args.dataset.name} ({len(records)} test cases)[/white]\n"
             f"• Database: [white]{args.db}[/white]",
-            title="⚡ Farad Ai Multi-SLM Benchmark Matrix",
+            title="⚡ Farad Ai Multi-Model AI Guard Benchmark Matrix",
             border_style="cyan"
         )
     )

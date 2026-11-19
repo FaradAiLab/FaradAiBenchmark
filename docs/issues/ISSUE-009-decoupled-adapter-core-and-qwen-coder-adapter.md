@@ -1,9 +1,5 @@
 # ISSUE-009: Decoupled Adapter Core & Qwen2.5-Coder Model Adapter
 
-## Parent
-- **Specification:** [SPEC-0004: Multi-SLM L2 Adapters, FastMCP Factory, and Comparative Benchmark Architecture](../specs/multi-slm-evaluation-and-mcp-guard-spec.md)
-- **Architectural Decision:** [ADR 0007: Multi-SLM L2 Adapters and Comparative Benchmark Architecture](../adr/0007-multi-slm-l2-adapter-and-benchmark-architecture.md)
-
 ## What to build
 Establish the decoupled `BaseModelAdapter` abstraction and implement the first high-performance code-security adapter for `Qwen2.5-Coder-1.5B` using Apple Silicon MLX 4-bit quantization.
 

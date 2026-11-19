@@ -153,7 +153,7 @@ ALTER TABLE run_history ADD COLUMN IF NOT EXISTS runtime_tier VARCHAR DEFAULT 'U
 
 ### 6.3 Standard Implementation: `OllamaGuardAdapter`
 ```python
-"""adapters/ollama_guard_adapter.py: Adapter for Generative SLM Guards on Ollama."""
+"""adapters/ollama_guard_adapter.py: Adapter for Generative AI Guard models on Ollama."""
 
 import logging
 import re
