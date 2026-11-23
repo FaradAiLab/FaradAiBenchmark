@@ -1,49 +1,52 @@
-# Implementation Plan: Ollama-Native Decision Model Adapters
+# Implementation Plan: Generic Cloud Decision Model Benchmarking (Phase 8)
 
-* **Feature:** Ollama-Native Decision Model Integration (Liquid AI d1-3B, Perplexity Decider Flash, Mica v0.5)
+* **Feature:** Generic Cloud System One Decision Model Benchmarking (`typesafe/jev-1.14` & multi-provider support)
 * **Governing Specification:** [SPEC.md](../../SPEC.md)
-* **Related ADR:** [ADR 0009: Ollama-Native Decision Model Adapters & Production Parity](../adr/0009-ollama-decision-model-adapters.md)
+* **Related ADR:** [ADR 0011: Generic Cloud Decision Model Architecture & System One Wire Parity](../adr/0011-generic-cloud-decision-model-architecture.md)
 * **Canonical Plan:** [tasks/plan.md](../../tasks/plan.md)
 * **Status:** Awaiting Human Approval
 
 ---
 
 ## 1. Overview & Architecture
-This plan decomposes the integration of local Ollama-hosted System 1 Decision Models into atomic, verifiable vertical tasks. The goal is to evaluate `d1`, `pplx-decider-flash`, and `mica-v0.5` through a unified `OllamaDecisionAdapter` directly matching live production deployment without embedding L1 logic into the model adapter.
+Decomposes Phase 8 into 9 atomic vertical slices across 4 modules (`eval-status-and-state-parity`, `cloud-provider-registry`, `systemone-cloud-adapter`, `cloud-matrix-execution`) so any cloud System One model can be registered in DuckDB/YAML without Python edits, benchmarked with scientific parity against local Apple Silicon runs, and bounded by atomic budget caps and deterministic `--resume-run-id`.
 
 ---
 
-## 2. Key Architecture Decisions
-- **Unified Parameterized Adapter:** A single `OllamaDecisionAdapter(model_name: str, ...)` in `adapters/ollama_decision_adapter.py` manages all Ollama decision models.
-- **Strict L2 Isolation:** Pure model evaluations execute without static rule contamination. Hybrid evaluations are composed via `HybridCascadeAdapter(l1_engine, l2_adapter)`.
-- **Deterministic VRAM Eviction:** `unload()` sends `keep_alive: 0` to Ollama (`POST /api/generate`) to purge model weights from Apple Silicon Metal unified memory before subsequent runs.
-- **Protocol Fallback:** Adapter attempts `/v1/systemone` first; if an older Ollama release returns 404, it gracefully falls back to structured `/api/chat` with JSON schema enforcement.
-
----
-
-## 3. Dependency Graph & Implementation Order
+## 2. Dependency Graph & Implementation Order
 
 ```text
-[Task 1: Modelfiles & Model Prep Helper]
-                     │
-                     ▼
-[Task 2: TDD RED - Unit Test Suite (Mocked HTTP)]
-                     │
-                     ▼
-[Task 3: TDD GREEN - OllamaDecisionAdapter Core]
-                     │
-                     ▼
-             [Checkpoint 1]
-                     │
-                     ▼
-[Task 4: Registry & Benchmark Runner Integration]
-                     │
-                     ▼
-[Task 5: Benchmark Matrix & Leaderboard Integration]
-                     │
-                     ▼
-[Task 6: Smoke Benchmark Verification (DuckDB Run)]
-                     │
-                     ▼
-             [Checkpoint 2]
+[Task 1: Runtime Deps (pyproject.toml) + WF-005 Live OpenRouter Wire Check]
+        │
+        ├──────────────────────────────┐
+        ▼                              ▼
+[Task 2: EvalStatus &           [Task 4: DuckDB Cloud Registry,
+ format_decision_state()]        Secret Hygiene & Seed YAML]
+        │                              │
+        ▼                              ▼
+[Task 3: Refusal & State        [Task 5: manage_cloud_models.py CLI &
+ Parity in Local/MCP]            Unified resolve_adapter()]
+        │                              │
+        ▼                              ▼
+[🛑 Checkpoint 1]              [🛑 Checkpoint 2]
+                                       │
+                                       ▼
+                               [Task 6: TDD RED - SystemOneCloudAdapter]
+                                       │
+                                       ▼
+                               [Task 7: TDD GREEN - SystemOneCloudAdapter]
+                                       │
+                                       ▼
+                               [🛑 Checkpoint 3]
+                                       │
+                                       ▼
+[Task 8: Cloud Matrix Concurrency, Budget Cap, Single Writer & --resume-run-id]
+                                       │
+                                       ▼
+[Task 9: Web Schema Parity, Explicit-Column INSERT & asyncio.to_thread]
+                                       │
+                                       ▼
+                               [🛑 Checkpoint 4: Full Regression & Smoke Run]
 ```
+
+See [tasks/plan.md](../../tasks/plan.md) and [tasks/todo.md](../../tasks/todo.md) for full risk table, acceptance criteria, and verification commands.

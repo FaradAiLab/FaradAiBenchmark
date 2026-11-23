@@ -69,10 +69,11 @@ def test_api_compare_runs(client):
 
     tbl_a = pa.Table.from_pydict(eval_a)
     tbl_b = pa.Table.from_pydict(eval_b)
+    cols = ", ".join(eval_a.keys())
     con.register("view_a", tbl_a)
     con.register("view_b", tbl_b)
-    con.execute("INSERT INTO run_case_evaluations SELECT * FROM view_a")
-    con.execute("INSERT INTO run_case_evaluations SELECT * FROM view_b")
+    con.execute(f"INSERT INTO run_case_evaluations ({cols}) SELECT {cols} FROM view_a")
+    con.execute(f"INSERT INTO run_case_evaluations ({cols}) SELECT {cols} FROM view_b")
     con.close()
 
     # 1. Compare all discrepancies

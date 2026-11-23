@@ -46,4 +46,12 @@ The detection, masking, or prevention of unauthorized transmission of sensitive 
 - **`Host Daemon Serving`**: Running Apple Silicon Metal models (such as Laya MLX) directly on the macOS Darwin host (via FastMCP / Uvicorn REST) to preserve Metal GPU unified memory zero-copy, explicitly avoiding macOS Docker container virtualization penalties (CPU-only fallback).
 - **`Discrete vs. Continuous Threat Scoring`**: The differentiation between models outputting continuous calibrated probabilities ($0.0 - 1.0$) for ROC-AUC and threshold sweeps (MLX and System 1 Decision models) versus generative models over standard HTTP daemons (Ollama) outputting discrete binary verdicts ($0.0$ or $1.0$).
 
+### Cloud Decision Model Benchmarking (ADR 0011)
+- **`Cloud Decision API Tier (CLOUD_DECISION_API)`**: The `runtime_tier` identifier distinguishing stateless, network-routed cloud System One / Decisions API evaluations (e.g., OpenRouter `typesafe/jev-1.14`, TypeSafe Direct, Liquid AI) from local Apple Silicon execution (`MLX_NATIVE_METAL`, `OLLAMA_DAEMON_HTTP`, `PYTORCH_MPS`).
+- **`Provider Dialect`**: A closed, strongly-typed Python enum (`OPENROUTER_DECISIONS`, `TYPESAFE_SYSTEMONE`, `LIQUID_SYSTEMONE`, `PERPLEXITY_DECISIONS`) encapsulating endpoint paths, auth/header rules, answer extractors, and error parsing inside `SystemOneCloudAdapter`, preserving ADR 0010's prohibition on untyped YAML DSLs.
+- **`Eval Status`**: The canonical case evaluation outcome classification (`OK | REFUSAL | ERROR | SKIPPED`) separating successfully evaluated verdicts (`BLOCKED` / `ALLOWED`) from non-evaluated model refusals, transport/HTTP errors, or pre-flight size-cap skips so non-`OK` cases never contaminate `TP/TN/FP/FN` metrics.
+- **`Canonical Decision State`**: The unified multiline `DEC-07` Root Intent Isolation string representation (`BaseModelAdapter.format_decision_state()`) shared identically across local and cloud decision adapters to maintain apples-to-apples benchmark parity.
+- **`Inference RTT vs. Retry Wait`**: Explicit latency decomposition separating pure HTTP inference round-trip time (`inference_rtt_ms`) from rate-limit / `429` exponential-backoff sleep time (`retry_wait_ms`).
+- **`Cost Source & Budget Reservation`**: Explicit provenance tagging (`api_reported` from provider response `usage.cost` vs. `estimated_fallback` from local per-1M-token pricing) paired with lock-guarded pre-dispatch credit reservation so concurrent workers cannot overshoot `max_cost_usd`.
+
 

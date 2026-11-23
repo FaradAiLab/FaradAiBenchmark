@@ -45,8 +45,8 @@ class ModelItem(BaseModel):
 
 class ExperimentModelConfig(BaseModel):
     """Configuration for an individual model within an experiment template."""
-    model_id: str = Field(..., description="Registered model adapter key (e.g. laya-mlx, ollama-d1)")
-    runtime_tier: Optional[str] = Field(None, description="Explicit runtime tier: MLX_NATIVE_METAL, OLLAMA_DAEMON_HTTP, PYTORCH_MPS, STATIC_RULE_ENGINE")
+    model_id: str = Field(..., description="Registered model adapter key (e.g. laya-mlx, ollama-d1, or-jev-1.14)")
+    runtime_tier: Optional[str] = Field(None, description="Explicit runtime tier: MLX_NATIVE_METAL, OLLAMA_DAEMON_HTTP, PYTORCH_MPS, STATIC_RULE_ENGINE, CLOUD_DECISION_API")
     enable_l1_cascade: bool = Field(False, description="Enable L1 static regex cascade filter")
     threat_threshold: Optional[float] = Field(None, description="Continuous probability threshold (MLX only)")
     exploit_threshold: Optional[float] = Field(None, description="Exploit confidence threshold")
@@ -112,7 +112,9 @@ class RunSummary(BaseModel):
     run_id: str = Field(..., description="Unique run identifier")
     dataset_name: str = Field(..., description="Evaluated dataset display label")
     model_name: str = Field(..., description="Evaluated model adapter and configuration")
-    status: str = Field(..., description="Execution status: pending | running | completed | error")
+    status: str = Field(..., description="Execution status: pending | running | completed | budget_stopped | error")
+    runtime_tier: Optional[str] = Field(None, description="Execution runtime tier badge")
+    experiment_id: Optional[str] = Field(None, description="Linked experiment template ID")
     total_cases: int = Field(0, description="Total planned test cases")
     accuracy: float = Field(0.0, description="Overall accuracy percentage (%)")
     precision: float = Field(0.0, description="Precision metric percentage (%)")
@@ -126,6 +128,11 @@ class RunSummary(BaseModel):
     tn: int = Field(0, description="True Negative count")
     fp: int = Field(0, description="False Positive count")
     fn: int = Field(0, description="False Negative count")
+    refusal_count: int = Field(0, description="Model refusal count")
+    error_count: int = Field(0, description="Evaluation error count")
+    skipped_count: int = Field(0, description="Pre-flight skipped count")
+    total_cost_usd: float = Field(0.0, description="Total USD cost")
+    cost_source: str = Field("none", description="Cost provenance: api_reported | estimated_fallback | mixed | none")
     started_at: Optional[Any] = Field(None, description="Start timestamp")
     completed_at: Optional[Any] = Field(None, description="Completion timestamp")
 
@@ -139,12 +146,20 @@ class RunEvaluationItem(BaseModel):
     cwe: Optional[str] = ""
     tool_name: Optional[str] = ""
     is_malicious: bool
-    predicted_blocked: bool
-    correct: bool
+    predicted_blocked: Optional[bool] = None
+    correct: Optional[bool] = None
+    eval_status: str = "OK"
     decided_by: str
     confidence: float = 0.0
     latency_ms: float = 0.0
+    inference_rtt_ms: float = 0.0
+    retry_wait_ms: float = 0.0
     offload_saved_ms: float = 0.0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cached_tokens: int = 0
+    cost_usd: float = 0.0
+    cost_source: str = "none"
     verdict_detail: Optional[str] = ""
     tool_arguments: Optional[str] = ""
     context: Optional[str] = ""
@@ -156,12 +171,19 @@ class RunDetailResponse(BaseModel):
     dataset_name: str
     model_name: str
     status: str
+    runtime_tier: Optional[str] = None
+    experiment_id: Optional[str] = None
     total_cases: int
     evaluated: int
     tp: int
     tn: int
     fp: int
     fn: int
+    refusal_count: int = 0
+    error_count: int = 0
+    skipped_count: int = 0
+    total_cost_usd: float = 0.0
+    cost_source: str = "none"
     accuracy: float
     precision_val: float
     recall_val: float
