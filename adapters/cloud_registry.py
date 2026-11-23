@@ -9,6 +9,7 @@ import inspect
 import json
 import logging
 import re
+from contextlib import suppress
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
@@ -632,7 +633,5 @@ def ensure_run_history_schema(
         "ALTER TABLE run_case_evaluations ALTER COLUMN predicted_blocked DROP NOT NULL;",
         "ALTER TABLE run_case_evaluations ALTER COLUMN correct DROP NOT NULL;",
     ]:
-        try:
+        with suppress(duckdb.Error):
             con.execute(nullable_stmt)
-        except Exception:
-            pass

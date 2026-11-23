@@ -368,7 +368,13 @@ def test_worker_exception_in_thread_pool_records_error_and_releases_budget(tmp_p
 
     assert summary["status"] == "completed"
     assert summary["error_count"] == 1
-    assert summary["evaluated"] == 3
+    assert summary["evaluated"] == 4
+    assert summary["total_cost_usd"] == pytest.approx(0.03)
+    hist_row = con.execute(
+        "SELECT tp + fp + tn + fn, error_count FROM run_history WHERE run_id = ?",
+        [summary["run_id"]],
+    ).fetchone()
+    assert hist_row == (3, 1)
     err_row = con.execute(
         "SELECT eval_status, verdict_detail, predicted_blocked, correct FROM run_case_evaluations WHERE case_id = 'case-001'"
     ).fetchone()
@@ -381,6 +387,7 @@ def test_worker_exception_in_thread_pool_records_error_and_releases_budget(tmp_p
 
 def test_resume_run_id_with_multiple_models_fails_fast(tmp_path: Path, monkeypatch):
     import sys
+
     import benchmark_matrix
 
     db_path = tmp_path / "cli_fail.duckdb"

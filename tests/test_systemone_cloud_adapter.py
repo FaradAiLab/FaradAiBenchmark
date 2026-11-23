@@ -326,7 +326,7 @@ def test_max_questions_and_max_context_tokens_skip_without_http(monkeypatch):
         return httpx.Response(200, json={})
 
     # 1. max_questions = 1 < 2 dual-check questions -> SKIPPED
-    prov_q = _make_provider(ProviderDialect.OPENROUTER_DECISIONS, max_questions=1)
+    prov_q = _make_provider(ProviderDialect.OPENROUTER_DECISIONS).model_copy(update={"max_questions": 1})
     adapter_q = SystemOneCloudAdapter(
         provider=prov_q,
         model_spec=_make_model(prov_q.provider_id),
@@ -339,7 +339,7 @@ def test_max_questions_and_max_context_tokens_skip_without_http(monkeypatch):
 
     # 2. max_context_tokens = 10 < ~100 tokens -> SKIPPED
     prov_ctx = _make_provider(ProviderDialect.OPENROUTER_DECISIONS)
-    model_ctx = _make_model(prov_ctx.provider_id, max_context_tokens=10)
+    model_ctx = _make_model(prov_ctx.provider_id).model_copy(update={"max_context_tokens": 10})
     adapter_ctx = SystemOneCloudAdapter(
         provider=prov_ctx,
         model_spec=model_ctx,
