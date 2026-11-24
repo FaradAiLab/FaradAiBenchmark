@@ -87,8 +87,8 @@ models:
     enabled: true
 
   - model_id: typesafe-jev-1.14
-    provider_id: typesafe-direct
-    remote_model_slug: jev-1.14.0
+    provider_id: openrouter
+    remote_model_slug: typesafe/jev-1.14
     question_profile_id: dual_check_v1
     state_format: canonical_text
     exploit_threshold: 0.50
