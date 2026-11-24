@@ -8,6 +8,7 @@ YAML Import/Export, and Unified Adapter Resolution (ADR 0011).
 import inspect
 import json
 import logging
+import os
 import re
 from contextlib import suppress
 from pathlib import Path
@@ -16,6 +17,7 @@ from urllib.parse import urlparse
 
 import duckdb
 import yaml
+from dotenv import dotenv_values
 from pydantic import BaseModel, Field, field_validator
 
 from adapters.base import BaseModelAdapter, ProviderDialect
@@ -33,6 +35,47 @@ SENSITIVE_HEADER_DENYLIST = frozenset({
 })
 ENV_VAR_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 LOCALHOST_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+STATIC_LOCAL_ADAPTER_IDS = frozenset({
+    "laya-mlx",
+    "kev-0.8b",
+    "qwen3guard",
+    "granite-guardian",
+    "llama-guard-3",
+    "prompt-guard",
+    "shield-gemma",
+    "ollama-d1",
+    "ollama-pplx-decider",
+    "ollama-mica",
+    "ollama-llama-guard3",
+    "ollama-granite-guardian",
+    "l1-rules",
+    "mock",
+})
+
+
+def _get_reserved_static_ids() -> frozenset[str]:
+    """Return all lowercase static local adapter keys that cloud models must not shadow."""
+    reserved = set(STATIC_LOCAL_ADAPTER_IDS)
+    with suppress(Exception):
+        from benchmark_runner import ADAPTER_REGISTRY
+        reserved.update(k.strip().lower() for k in ADAPTER_REGISTRY)
+    return frozenset(reserved)
+
+
+def is_api_key_configured(env_name: str, env_file: Path | None = None) -> bool:
+    """Return True if env_name is non-empty in process env or .env file (never returns the secret)."""
+    cleaned = env_name.strip()
+    if not cleaned:
+        return False
+    if os.environ.get(cleaned, "").strip():
+        return True
+    dotenv_path = env_file or (Path(__file__).resolve().parent.parent / ".env")
+    if dotenv_path.exists():
+        with suppress(OSError):
+            vals = dotenv_values(dotenv_path)
+            if (vals.get(cleaned) or "").strip():
+                return True
+    return False
 
 
 class CloudProviderSpec(BaseModel):
@@ -51,11 +94,27 @@ class CloudProviderSpec(BaseModel):
     max_body_bytes: int | None = Field(None, ge=1024)
     max_questions: int | None = Field(None, ge=1)
 
+    @field_validator("provider_id")
+    @classmethod
+    def normalize_provider_id(cls, value: str) -> str:
+        cleaned = value.strip().lower()
+        if not cleaned:
+            raise ValueError("provider_id cannot be empty.")
+        return cleaned
+
     @field_validator("base_url")
     @classmethod
     def validate_base_url(cls, value: str) -> str:
         cleaned = value.strip().rstrip("/")
         parsed = urlparse(cleaned)
+        if parsed.query or parsed.fragment:
+            raise ValueError(
+                f"Provider base_url must not contain query strings or fragments, got: {value!r}"
+            )
+        if parsed.username or parsed.password:
+            raise ValueError(
+                f"Provider base_url must not contain embedded credentials, got: {value!r}"
+            )
         host = (parsed.hostname or "").lower()
         if parsed.scheme == "https" and host:
             return cleaned
@@ -109,6 +168,26 @@ class CloudModelSpec(BaseModel):
     input_price_per_1m_usd: float | None = Field(None, ge=0.0)
     max_context_tokens: int | None = Field(None, ge=1)
     enabled: bool = True
+
+    @field_validator("model_id")
+    @classmethod
+    def normalize_model_id(cls, value: str) -> str:
+        cleaned = value.strip().lower()
+        if not cleaned:
+            raise ValueError("model_id cannot be empty.")
+        if cleaned in _get_reserved_static_ids():
+            raise ValueError(
+                f"model_id {cleaned!r} collides with a reserved local adapter name; choose a distinct ID."
+            )
+        return cleaned
+
+    @field_validator("provider_id")
+    @classmethod
+    def normalize_model_provider_id(cls, value: str) -> str:
+        cleaned = value.strip().lower()
+        if not cleaned:
+            raise ValueError("provider_id cannot be empty.")
+        return cleaned
 
 
 def init_cloud_registry(
@@ -281,7 +360,7 @@ def get_cloud_provider(
     provider_id: str,
     db_target: Path | str | duckdb.DuckDBPyConnection = DEFAULT_DB_PATH,
 ) -> CloudProviderSpec | None:
-    """Fetch a CloudProviderSpec by provider_id."""
+    """Fetch a CloudProviderSpec by provider_id (case-insensitive)."""
     with get_connection(db_target) as con:
         row = con.execute(
             """
@@ -289,11 +368,37 @@ def get_cloud_provider(
                    api_key_env, extra_headers_json, timeout_seconds, max_concurrency,
                    rpm_limit, max_body_bytes, max_questions
             FROM cloud_providers
-            WHERE provider_id = ?
+            WHERE LOWER(provider_id) = LOWER(?)
             """,
-            [provider_id],
+            [provider_id.strip()],
         ).fetchone()
         return _row_to_provider(row) if row else None
+
+
+def delete_cloud_provider(
+    provider_id: str,
+    db_target: Path | str | duckdb.DuckDBPyConnection = DEFAULT_DB_PATH,
+) -> bool:
+    """Delete a CloudProviderSpec by provider_id if no cloud_models reference it."""
+    key = provider_id.strip().lower()
+    with get_connection(db_target) as con:
+        existing = con.execute(
+            "SELECT provider_id FROM cloud_providers WHERE LOWER(provider_id) = ?",
+            [key],
+        ).fetchone()
+        if not existing:
+            return False
+        ref_count = con.execute(
+            "SELECT COUNT(*) FROM cloud_models WHERE LOWER(provider_id) = ?",
+            [key],
+        ).fetchone()[0]
+        if ref_count > 0:
+            raise ValueError(
+                f"Cannot delete provider '{key}': {ref_count} cloud model(s) still reference it. "
+                "Delete or reassign those models first."
+            )
+        con.execute("DELETE FROM cloud_providers WHERE LOWER(provider_id) = ?", [key])
+        return True
 
 
 def list_cloud_providers(
@@ -414,6 +519,23 @@ def list_cloud_models(
             """
         ).fetchall()
         return [_row_to_model(r) for r in rows]
+
+
+def delete_cloud_model(
+    model_id: str,
+    db_target: Path | str | duckdb.DuckDBPyConnection = DEFAULT_DB_PATH,
+) -> bool:
+    """Delete a CloudModelSpec by model_id (case-insensitive)."""
+    key = model_id.strip().lower()
+    with get_connection(db_target) as con:
+        existing = con.execute(
+            "SELECT model_id FROM cloud_models WHERE LOWER(model_id) = ?",
+            [key],
+        ).fetchone()
+        if not existing:
+            return False
+        con.execute("DELETE FROM cloud_models WHERE LOWER(model_id) = ?", [key])
+        return True
 
 
 def export_cloud_config(
@@ -618,6 +740,9 @@ def ensure_run_history_schema(
         "ALTER TABLE run_history ADD COLUMN IF NOT EXISTS total_cost_usd DOUBLE DEFAULT 0.0;",
         "ALTER TABLE run_history ADD COLUMN IF NOT EXISTS cost_source VARCHAR DEFAULT 'none';",
         "ALTER TABLE run_history ADD COLUMN IF NOT EXISTS max_cost_usd DOUBLE DEFAULT NULL;",
+        "ALTER TABLE run_history ADD COLUMN IF NOT EXISTS tier_scope VARCHAR DEFAULT 'all';",
+        "ALTER TABLE run_history ADD COLUMN IF NOT EXISTS enable_l1 BOOLEAN DEFAULT NULL;",
+        "ALTER TABLE run_history ADD COLUMN IF NOT EXISTS limit_cases INTEGER DEFAULT NULL;",
         "ALTER TABLE run_case_evaluations ADD COLUMN IF NOT EXISTS eval_status VARCHAR DEFAULT 'OK';",
         "ALTER TABLE run_case_evaluations ADD COLUMN IF NOT EXISTS inference_rtt_ms DOUBLE DEFAULT 0;",
         "ALTER TABLE run_case_evaluations ADD COLUMN IF NOT EXISTS retry_wait_ms DOUBLE DEFAULT 0;",

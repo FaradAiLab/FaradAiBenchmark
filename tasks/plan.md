@@ -1,68 +1,67 @@
-# Implementation Plan: Generic Cloud Decision Model Benchmarking (Phase 8)
+# Implementation Plan: Web Studio Redesign — Models Dashboard & Periodic AI-Ready Report Studio (Phase 9)
 
-* **Feature:** Generic Cloud System One Decision Model Benchmarking (`typesafe/jev-1.14` & multi-provider support)
-* **Governing Specification:** [SPEC.md](../SPEC.md) (and [cloud-decision-model-benchmarking-spec.md](../docs/specs/cloud-decision-model-benchmarking-spec.md))
-* **Related ADR:** [ADR 0011: Generic Cloud Decision Model Architecture & System One Wire Parity](../docs/adr/0011-generic-cloud-decision-model-architecture.md)
+* **Feature:** Unified `Models` Tab (Local Read-Only + Cloud CRUD) & Read-Only Periodic `Report Studio` (Replacing `Matrix Studio` Web UI)
+* **Governing Specification:** [SPEC.md](../SPEC.md) (mirrored in [web-studio-models-and-report-studio-spec.md](../docs/specs/web-studio-models-and-report-studio-spec.md))
+* **Related ADR:** [ADR 0012: Web Studio Redesign — Models CRUD Dashboard & Periodic AI-Ready Report Studio](../docs/adr/0012-web-studio-models-crud-and-periodic-report-studio.md)
 * **Domain Model:** [CONTEXT.md](../CONTEXT.md)
-* **Wayfinder Map:** [MAP.md](../docs/wayfinder/cloud-decision-providers/MAP.md)
-* **Status:** Awaiting Human Approval
+* **Wayfinder Map:** [MAP.md](../docs/wayfinder/web-studio-models-and-reports/MAP.md)
+* **Status:** Implemented & Verified
 
 ---
 
 ## 1. Overview & Architecture
 
-This plan decomposes Phase 8 into **9 vertical, verifiable tasks** grouped across 4 capability modules (`eval-status-and-state-parity`, `cloud-provider-registry`, `systemone-cloud-adapter`, `cloud-matrix-execution`). The goal is to let researchers onboard any cloud System One / Decisions API model (`OpenRouter`, `TypeSafe Direct`, `Liquid AI`, `Perplexity`) via DuckDB/YAML without touching Python code, while maintaining apples-to-apples scientific parity with local Apple Silicon runs (`Laya`, `Kev`, `Ollama`) and protecting paid cloud budgets against races, crashes, and silent refusal coercion.
+This plan decomposes Phase 9 into **7 atomic, verifiable tasks** grouped across 4 capability modules (`db-hardening-and-parity-schema`, `cloud-models-crud-api`, `report-studio-backend-and-bundle`, `web-studio-ui-redesign`). It delivers:
+1. A hardened DuckDB Cloud Registry & process-wide write lock powering a new **`Models`** tab (read-only local adapters + full Cloud Provider/Model CRUD with `.env` boolean badges).
+2. A read-only **`Report Studio`** tab replacing `Matrix Studio` in the Web UI (while keeping `benchmark_matrix.py` CLI and `experiment_templates` intact), fed by a paginated, filterable **`History`** tab with multi-page selection, a two-state **`draft` → `published` (sealed snapshot)** lifecycle, automatic **Parity Guards**, and a metadata-only **AI-Ready Markdown & JSON Bundle**.
 
 ---
 
-## 2. Key Architecture Decisions (ADR 0011)
+## 2. Key Architecture Decisions (ADR 0012)
 
-- **Closed `ProviderDialect` Enum (ADR 0010 Compliance):** Wire differences across `OPENROUTER_DECISIONS`, `TYPESAFE_SYSTEMONE`, `LIQUID_SYSTEMONE`, and `PERPLEXITY_DECISIONS` live in strongly-typed Python dialect handlers inside `SystemOneCloudAdapter`—never an untyped YAML DSL. Divergent non-System-One providers (e.g., direct Cloudflare Workers AI RPC) use OpenRouter routing or a dedicated typed Python adapter escape hatch.
-- **`EvalStatus` & Non-Coercive Metrics:** `OK | REFUSAL | ERROR | SKIPPED` separates failed/refused/oversized cases from `TP/TN/FP/FN` denominators and fixes `.get("noul", 0.0)` / `MockSecurityAdapter` silent fallbacks across existing runners and local adapters.
-- **Canonical State & Latency Parity:** `BaseModelAdapter.format_decision_state()` unifies multiline `DEC-07` inputs across local and cloud models; `inference_rtt_ms` is recorded separately from `retry_wait_ms`.
-- **Stateless AI over Pooled Transport:** `ThreadPoolExecutor` + thread-local `httpx.Client` connection pooling keeps TCP/TLS overhead off latency metrics while sending 100% isolated, stateless System One requests per case.
-- **Safe Paid Execution:** Single DuckDB writer lock, pre-inserted `status='running'` `run_history` rows with `config_hash`, deterministic `ORDER BY id` test loading, lock-guarded atomic `max_cost_usd` reservation, and `cost_source` provenance (`api_reported` | `estimated_fallback`).
-- **Unit & Schema Hygiene:** Standardize `run_history` metrics on `0.0–100.0` percentages across CLI, Matrix, and Web UI, and replace `web/app.py`'s positional `SELECT *` insert with explicit column names.
+- **DuckDB Single Source of Truth for Cloud CRUD:** Web UI manages `cloud_providers` and `cloud_models` directly in DuckDB (lowercase IDs, static `ADAPTER_REGISTRY` collision guard, `base_url` query-string/credential guard, FK delete protection on providers). YAML import/export remains CLI-only (`scripts/manage_cloud_models.py`) with optional read-only YAML download in UI.
+- **Process-Wide `DB_WRITE_LOCK` & `load_dotenv`:** `web/app.py` calls `load_dotenv(override=False)` on lifespan startup and serializes every DuckDB write (`execute_benchmark`, cloud CRUD, report CRUD/publish, run delete) through one module-level `threading.Lock`.
+- **Backwards-Compatible Paginated `GET /api/runs`:** Existing `tests/test_multi_model_discrepancy.py` expects `GET /api/runs` to return `List[RunSummary]`. Therefore `GET /api/runs` keeps returning `List[RunSummary]` while adding `limit` (default 50, max 200), `offset`, `dataset`, `model`, `status` query params and an `X-Total-Count` response header.
+- **Structured `run_history` Parity Columns:** `tier_scope`, `enable_l1`, and `limit_cases` are added to `run_history` and populated by both `web/app.py` and `benchmark_matrix.py` (with legacy string fallback for older rows).
+- **Two-State Sealed Report Lifecycle (`draft` → `published`):** Drafts are editable (warning & pruning if a referenced run was deleted); published reports freeze `snapshot_json` permanently (`409 Conflict` on edit, immune to `History` deletes, supporting only Delete or Duplicate as Draft).
+- **Metadata-Only AI-Ready Bundle:** Excludes raw `tool_arguments` and `context` payloads in v1 to eliminate prompt-injection and context-bloat risks.
+- **Clean `Matrix Studio` Retirement:** Removes `page-matrix` HTML and ~400 lines of dead JS from `web/static/app.js` while keeping `benchmark_matrix.py` CLI and `experiment_registry.py` intact.
 
 ---
 
 ## 3. Dependency Graph & Implementation Order
 
 ```text
-[Task 1: Runtime Deps (pyproject.toml) + WF-005 Live OpenRouter Wire Check]
+[Task 1: Cloud Registry Hardening & run_history Parity Columns]
         │
-        ├──────────────────────────────┐
-        ▼                              ▼
-[Task 2: EvalStatus &           [Task 4: DuckDB Cloud Registry,
- format_decision_state()]        Secret Hygiene & Seed YAML]
-        │                              │
-        ▼                              ▼
-[Task 3: Refusal & State        [Task 5: manage_cloud_models.py CLI &
- Parity in Local/MCP]            Unified resolve_adapter()]
-        │                              │
-        ▼                              ▼
-[🛑 Checkpoint 1]              [🛑 Checkpoint 2]
-                                       │
-                                       ▼
-                               [Task 6: TDD RED - SystemOneCloudAdapter]
-                                       │
-                                       ▼
-                               [Task 7: TDD GREEN - SystemOneCloudAdapter]
-                                       │
-                                       ▼
-                               [🛑 Checkpoint 3]
-                                       │
-                                       ▼
-[Task 8: Cloud Matrix Concurrency, Budget Cap, Single Writer & --resume-run-id]
-                                       │
-                                       ▼
-[Task 9: Web Schema Parity, Explicit-Column INSERT & asyncio.to_thread]
-                                       │
-                                       ▼
-                               [🛑 Checkpoint 4: Full Regression & Smoke Run]
+        ▼
+[Task 2: web/app.py load_dotenv, DB_WRITE_LOCK & Paginated /api/runs]
+        │
+        ▼
+[🛑 Checkpoint 1: Core DB & History Parity Verified]
+        │
+        ├──────────────────────────────────────┐
+        ▼                                      ▼
+[Task 3: FastAPI Cloud Providers       [Task 4: adapters/report_registry.py
+ & Cloud Models CRUD API + Tests]       Lifecycle, Parity Guard & Bundle]
+        │                                      │
+        ▼                                      ▼
+[🛑 Checkpoint 2: Cloud CRUD API]      [Task 5: FastAPI /api/reports*
+        │                               Endpoints & Export Tests]
+        │                                      │
+        │                                      ▼
+        │                              [🛑 Checkpoint 3: Report API]
+        │                                      │
+        ▼                                      ▼
+[Task 6: Models Tab UI (Local          [Task 7: Retire Matrix Studio UI ->
+ Read-Only + Cloud CRUD Modals)]        Report Studio + Paginated History]
+        │                                      │
+        └──────────────────┬───────────────────┘
+                           ▼
+        [🛑 Checkpoint 4: Full make test-unit & ruff check]
 ```
 
-*(Note: Tasks 2–3 and Task 4 can be worked independently once Task 1 completes.)*
+*(Tasks 3 and 4–5 can run independently after Checkpoint 1; Tasks 6 and 7 converge into final UI & regression verification.)*
 
 ---
 
@@ -70,15 +69,14 @@ This plan decomposes Phase 8 into **9 vertical, verifiable tasks** grouped acros
 
 | Risk | Impact | Mitigation |
 | :--- | :---: | :--- |
-| **OpenRouter `typesafe/jev-1.14` actual payload fields differ from docs** (`input_tokens` vs `prompt_tokens`, `noul` shape, 32K/64K vs 262K ctx) | High | Task 1 runs `WF-005` 2-case live check (or captures fixture if key pending) before Task 6–7 lock dialect parsers. |
-| **Perplexity/Liquid unverified wire quirks** (`usage.cost`, top-level `refusal`, `probability` vs `noul`) | Medium | Flagged as unverified in `WF-001`; dialect unit tests isolate parsers and require live smoke verification before production enablement. |
-| **DuckDB write-lock contention or `SELECT *` column mismatch in `web/app.py`** | High | Task 8 funnels writes through one writer lock; Task 9 replaces `SELECT *` with explicit column lists in `web/app.py`. |
-| **Concurrent `max_cost_usd` budget overshoot under `ThreadPoolExecutor`** | High | Task 8 enforces lock-guarded pre-dispatch cost reservation (`reserved + worst_case <= max_cost_usd`) settled on response. |
-| **Legacy `run_history` `0–1` vs `0–100` ratio mismatch** | Medium | Task 8 standardizes `0–100%` across `benchmark_matrix.py` and migrates/normalizes existing `<= 1.0` rows cleanly. |
+| **`GET /api/runs` shape change breaks `tests/test_multi_model_discrepancy.py`** | Medium | Keep JSON body as `List[RunSummary]` and return pagination total via `X-Total-Count` header. |
+| **DuckDB write-write conflicts while background benchmark runs** | High | Guard every write path in `web/app.py` with one shared `DB_WRITE_LOCK`. |
+| **Legacy `run_history` rows have `NULL` in `tier_scope`/`enable_l1`/`limit_cases`** | Medium | Implement safe fallback parser in `report_registry.py` reading legacy `(static)`/`(semantik)` and `+ L1`/`(Saf)` markers when structured columns are `NULL`. |
+| **Removing `Matrix Studio` breaks `tests/test_experiment_api.py`** | Low | Task 7 updates UI assertions in `tests/test_experiment_api.py` to check `Models` and `Report Studio` while preserving `/api/experiments` backend assertions. |
+| **Cloud model ID shadows local adapter (`laya-mlx`, `mock`)** | High | Task 1 enforces explicit collision check against `ADAPTER_REGISTRY` keys on `save_cloud_model()`. |
 
 ---
 
 ## 5. Open Questions
 
-- Confirmed `OPENROUTER_API_KEY` placement in `.env` (gitignored); user populates the actual key before executing the live 2-case verification in Task 1 (`WF-005`).
-- Perplexity and Liquid live checks remain gated until keys for those providers are configured.
+- **None.** Ready for human approval before `/build`.

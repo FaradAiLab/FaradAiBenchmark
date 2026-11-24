@@ -1,139 +1,120 @@
-# Task Checklist: Generic Cloud Decision Model Benchmarking (Phase 8)
+# Task Checklist: Web Studio Redesign — Models Dashboard & Periodic AI-Ready Report Studio (Phase 9)
 
 * **Governing Specification:** [SPEC.md](../SPEC.md)
 * **Implementation Plan:** [plan.md](plan.md)
-* **Related ADR:** [ADR 0011: Generic Cloud Decision Model Architecture & System One Wire Parity](../docs/adr/0011-generic-cloud-decision-model-architecture.md)
-* **Status:** Implemented (Offline Complete; Live OpenRouter `WF-005` & Smoke Run Gated on `OPENROUTER_API_KEY` + Parquet Datasets)
+* **Related ADR:** [ADR 0012: Web Studio Redesign — Models CRUD Dashboard & Periodic AI-Ready Report Studio](../docs/adr/0012-web-studio-models-crud-and-periodic-report-studio.md)
+* **Status:** Implemented & Verified
 
 ---
 
-## Phase 1: Pre-Flight Dependencies, Live Wire Check & Core Parity
+## Phase 1: DB Hardening, Parity Schema & Write Serialization (`db-hardening-and-parity-schema`)
 
-- [ ] **Task 1: Runtime Dependencies & Live OpenRouter Jev Verification (`WF-005`)**
-  - **Description:** Promote `httpx>=0.27.0` and declare `pyyaml>=6.0` in `pyproject.toml` runtime `dependencies`, install into `.venv`, and execute the 2-case OpenRouter `typesafe/jev-1.14` verification (`WF-005`) once `OPENROUTER_API_KEY` is populated in `.env` (recording observed `usage`, `noul`, latency, and `canonical_text` vs `structured_json` parity, closing `WF-005` in `MAP.md`).
+- [x] **Task 1: Cloud Registry Hardening & `run_history` Parity Columns**
+  - **Description:** Harden `adapters/cloud_registry.py` with lowercase ID normalization (`provider_id`, `model_id`), static `ADAPTER_REGISTRY` collision guard, `base_url` query-string/credential guard, `delete_cloud_model()`, `delete_cloud_provider()` (blocking delete when child models exist), and `is_api_key_configured(env_name)`. Extend `ensure_run_history_schema()` with `tier_scope`, `enable_l1`, and `limit_cases` columns, and update `benchmark_matrix.py` to populate them.
   - **Acceptance Criteria:**
-    - [x] `httpx>=0.27.0` and `pyyaml>=6.0` are declared in `[project] dependencies` in `pyproject.toml`.
-    - [x] `.venv/bin/python -c "import httpx, yaml"` succeeds cleanly.
-    - [ ] `WF-005` empirical response capture (1 benign + 1 malicious MCP call) is recorded and `WF-005` closed (gated: `.env` currently has empty `OPENROUTER_API_KEY=`).
-  - **Verification:** `.venv/bin/python -c "import httpx, yaml; print('OK')"` and `make test-unit`
+    - [x] Saving `OR-Jev-1.14` normalizes to `or-jev-1.14` and updates the existing row instead of duplicating PKs.
+    - [x] Saving a cloud model named `laya-mlx` or `mock` raises `ValueError`.
+    - [x] `base_url` with `?key=123` or `user:pass@` raises `ValueError`.
+    - [x] `delete_cloud_provider` raises `ValueError` while child models reference it, and succeeds once children are deleted.
+    - [x] `run_history` includes `tier_scope`, `enable_l1`, `limit_cases` populated by `benchmark_matrix.py`.
+  - **Verification:** `.venv/bin/python -m pytest tests/test_cloud_registry.py tests/test_benchmark_matrix.py -v`
   - **Dependencies:** None
-  - **Files:** `pyproject.toml`, `docs/wayfinder/cloud-decision-providers/tickets/WF-005-jev-openrouter-api-check.md`, `docs/wayfinder/cloud-decision-providers/MAP.md`
-  - **Estimated Scope:** Small (3 files)
+  - **Files:** `adapters/cloud_registry.py`, `benchmark_matrix.py`, `tests/test_cloud_registry.py`
+  - **Estimated Scope:** Medium (3 files)
 
-- [x] **Task 2: `EvalStatus`, `EvaluationResult` & `BaseModelAdapter.format_decision_state()` Core**
-  - **Description:** Introduce `EvalStatus` (`OK | REFUSAL | ERROR | SKIPPED`) and telemetry fields (`eval_status`, `inference_rtt_ms`, `retry_wait_ms`, `input_tokens`, `output_tokens`, `cached_tokens`, `cost_usd`, `cost_source`) in `adapters/base.py`, along with canonical `BaseModelAdapter.format_decision_state()` (shared `DEC-07` isolation + sorted JSON + URL-decode canonicalization).
+- [x] **Task 2: `web/app.py` Boot Hygiene (`load_dotenv`), `DB_WRITE_LOCK` & Paginated `/api/runs`**
+  - **Description:** Call `load_dotenv(override=False)` in `web/app.py` lifespan, introduce module-level `DB_WRITE_LOCK = threading.Lock()` around all DuckDB writes (`execute_benchmark`, `DELETE /api/runs/{run_id}`, and upcoming endpoints), populate `tier_scope`, `enable_l1`, and `limit_cases` on new Web runs, and upgrade `GET /api/runs` with `limit` (default 50, max 200), `offset`, `dataset`, `model`, `status` query params plus `X-Total-Count` response header (preserving `List[RunSummary]` body).
   - **Acceptance Criteria:**
-    - [x] `EvalStatus` enum and extended `EvaluationResult` fields exist in `adapters/base.py` with backward-compatible defaults (`eval_status="OK"`).
-    - [x] `BaseModelAdapter.format_decision_state()` deterministically formats `PRIMARY_USER_GOAL`, optional `UNTRUSTED_EXTERNAL_DATA`, `TOOL_NAME`, `TOOL_PURPOSE`, `CALL_ARGUMENTS`, and `CANONICAL_DECODED_ARGUMENTS`.
-    - [x] Unit tests in `tests/test_eval_status_parity.py` verify `EvaluationResult` serialization and `format_decision_state()` edge cases.
-  - **Verification:** `.venv/bin/python -m pytest tests/test_eval_status_parity.py -v`
+    - [x] `load_dotenv(override=False)` executes at FastAPI lifespan startup.
+    - [x] All DuckDB writes in `web/app.py` acquire `DB_WRITE_LOCK`.
+    - [x] `GET /api/runs?limit=25&offset=0&status=completed` returns filtered `List[RunSummary]` and accurate `X-Total-Count` header.
+    - [x] Existing `tests/test_multi_model_discrepancy.py` and `tests/test_relational_storage.py` pass unchanged.
+  - **Verification:** `.venv/bin/python -m pytest tests/test_multi_model_discrepancy.py tests/test_relational_storage.py -v`
   - **Dependencies:** Task 1
-  - **Files:** `adapters/base.py`, `tests/test_eval_status_parity.py`
+  - **Files:** `web/app.py`, `web/schemas.py`
   - **Estimated Scope:** Small (2 files)
 
-- [x] **Task 3: Refusal & State Parity Fixes in Local Adapters and MCP Factory**
-  - **Description:** Update local System One adapters and FastMCP wrapper so none of them silently coerce `{"type": "refusal"}` or missing answer keys to `0.0` (`ALLOWED`), and align state formatting on `BaseModelAdapter.format_decision_state()`.
+### 🛑 Checkpoint 1: After Tasks 1–2 (`db-hardening-and-parity-schema`)
+- [x] `tests/test_cloud_registry.py`, `tests/test_multi_model_discrepancy.py`, and `tests/test_relational_storage.py` pass 100%.
+
+---
+
+## Phase 2: Cloud Models CRUD API (`cloud-models-crud-api`)
+
+- [x] **Task 3: FastAPI Cloud Providers & Cloud Models CRUD Endpoints + Tests**
+  - **Description:** Add Pydantic request/response schemas in `web/schemas.py` and implement `/api/cloud-providers` (`GET/POST/PUT/DELETE`), `/api/cloud-models` (`GET/POST/PUT/DELETE`), and read-only `GET /api/cloud-config/export-yaml` in `web/app.py` (guarded by `DB_WRITE_LOCK`), exposing only boolean `api_key_configured` (never raw secrets). Write comprehensive API tests in `tests/test_cloud_models_api.py`.
   - **Acceptance Criteria:**
-    - [x] `adapters/ollama_decision_adapter.py`, `adapters/kev_adapter.py`, and `laya_security_guard_mcp.py` check `answer.get("type") == "refusal"` / missing keys and return `verdict="REFUSAL"`, `eval_status="REFUSAL"`, `is_blocked=False`.
-    - [x] Local adapters call `BaseModelAdapter.format_decision_state()` for apples-to-apples parity.
-    - [x] `guard_mcp_factory.py` propagates `verdict` (`REFUSAL` / `ERROR`) instead of overwriting any `is_blocked=False` result as `"ALLOWED"`.
-  - **Verification:** `.venv/bin/python -m pytest tests/test_eval_status_parity.py tests/test_ollama_decision_adapter.py tests/test_kev_adapter.py tests/test_mcp_servers.py -v`
+    - [x] Full CRUD round-trip succeeds for both providers and models via FastAPI `TestClient`.
+    - [x] Deleting a provider with linked models returns `409 Conflict`; deleting after removing models returns `200`.
+    - [x] `api_key_configured` accurately reflects env presence while raw API key strings never appear in any response payload.
+    - [x] Creating a cloud model with a static local adapter name returns `422` / `400`.
+  - **Verification:** `.venv/bin/python -m pytest tests/test_cloud_models_api.py -v`
   - **Dependencies:** Task 2
-  - **Files:** `adapters/ollama_decision_adapter.py`, `adapters/kev_adapter.py`, `laya_security_guard_mcp.py`, `guard_mcp_factory.py`, `tests/test_ollama_decision_adapter.py`
-  - **Estimated Scope:** Medium (5 files)
-
-### 🛑 Checkpoint 1: After Tasks 1–3 (`eval-status-and-state-parity`)
-- [x] `tests/test_eval_status_parity.py` and all mocked local adapter/MCP unit tests pass (`test_kev_adapter.py` requires external `.scratch/kev` clone)
-- [x] Phase 8 + unit test suite passes with zero regressions (`test_kev_adapter.py` omitted without `.scratch/kev`)
-
----
-
-## Phase 2: DuckDB Cloud Registry, Secret Hygiene & Unified Resolution
-
-- [x] **Task 4: DuckDB `cloud_providers` / `cloud_models` Registry, Secret Hygiene & Seed YAML**
-  - **Description:** Implement `adapters/cloud_registry.py` managing `cloud_providers` and `cloud_models` tables in `data/benchmark_runs.duckdb`, Pydantic schema validation (`ProviderDialect` enum check, `https://` enforcement for non-localhost endpoints, sensitive-header denylist on `extra_headers`, `api_key_env`-only secrets), YAML import/export, and `config/cloud_models/default_systemone.yaml` seed definitions (OpenRouter `typesafe/jev-1.14`, `pplx-decider-v1.3:free`, TypeSafe Direct, Liquid AI).
-  - **Acceptance Criteria:**
-    - [x] `cloud_providers` and `cloud_models` tables initialize idempotently in DuckDB.
-    - [x] Validation rejects `http://` (non-localhost), rejects `Authorization`/`Cookie`/`x-api-key`/`Proxy-Authorization` in `extra_headers`, and rejects invalid `ProviderDialect` values.
-    - [x] YAML import/export round-trips provider and model configs without losing thresholds, pricing, or limits.
-  - **Verification:** `.venv/bin/python -m pytest tests/test_cloud_registry.py -v`
-  - **Dependencies:** Task 1
-  - **Files:** `adapters/cloud_registry.py`, `config/cloud_models/default_systemone.yaml`, `tests/test_cloud_registry.py`
+  - **Files:** `web/schemas.py`, `web/app.py`, `tests/test_cloud_models_api.py`
   - **Estimated Scope:** Medium (3 files)
 
-- [x] **Task 5: `manage_cloud_models.py` CLI & Unified `resolve_adapter()` in `benchmark_runner.py`**
-  - **Description:** Create `scripts/manage_cloud_models.py` (`--import`, `--export`, `--list`) and expose `resolve_adapter(model_id, db_con)` in `adapters/cloud_registry.py` covering both static `ADAPTER_REGISTRY` and dynamic DuckDB `cloud_models`. Update `benchmark_runner.py` to drop static `argparse choices=`, resolve models dynamically, exclude non-`OK` rows from `TP/TN/FP/FN` metrics, separate `inference_rtt_ms` from `retry_wait_ms`, and print `refusal_rate`/`error_rate`/`cost_usd`.
-  - **Acceptance Criteria:**
-    - [x] `scripts/manage_cloud_models.py --import` / `--list` / `--export` works end-to-end against DuckDB.
-    - [x] `benchmark_runner.py --model <dynamic-cloud-id>` no longer fails `argparse` validation and fails explicitly on unknown IDs or missing env keys.
-    - [x] `benchmark_runner.py` metrics exclude `REFUSAL`/`ERROR`/`SKIPPED` from accuracy/FPR denominators and report `inference_rtt_ms` without retry-sleep inflation.
-  - **Verification:** `.venv/bin/python -m pytest tests/test_cloud_registry.py -v` and `.venv/bin/python scripts/manage_cloud_models.py --help`
-  - **Dependencies:** Task 2, Task 4
-  - **Files:** `scripts/manage_cloud_models.py`, `adapters/cloud_registry.py`, `benchmark_runner.py`, `tests/test_cloud_registry.py`
-  - **Estimated Scope:** Medium (4 files)
-
-### 🛑 Checkpoint 2: After Tasks 4–5 (`cloud-provider-registry`)
-- [x] `tests/test_cloud_registry.py` passes 100%
-- [x] Phase 8 + unit test suite passes with zero regressions
+### 🛑 Checkpoint 2: After Task 3 (`cloud-models-crud-api`)
+- [x] `tests/test_cloud_models_api.py` passes 100% with zero secret leakage.
 
 ---
 
-## Phase 3: `SystemOneCloudAdapter` (TDD Cycle)
+## Phase 3: Report Studio Backend & AI-Ready Bundle (`report-studio-backend-and-bundle`)
 
-- [x] **Task 6: `SystemOneCloudAdapter` Unit Test Suite (TDD RED)**
-  - **Description:** Write comprehensive mocked `httpx.Client` tests in `tests/test_systemone_cloud_adapter.py` covering all 4 closed `ProviderDialect`s (`OPENROUTER_DECISIONS`, `TYPESAFE_SYSTEMONE`, `LIQUID_SYSTEMONE`, `PERPLEXITY_DECISIONS`), `QuestionProfile` (`dual_check_v1`), refusal handling, `429` retry with and without `Retry-After`, `inference_rtt_ms` vs `retry_wait_ms`, `max_body_bytes` overflow -> `SKIPPED` (no truncation), `cost_source` (`api_reported` vs `estimated_fallback`), and header scrubbing in logs/`raw_output`.
+- [x] **Task 4: `adapters/report_registry.py` — `benchmark_reports` Schema, Lifecycle (`draft` → `published`), Parity Guard & Metadata-Only AI-Ready Bundle**
+  - **Description:** Implement `adapters/report_registry.py` with `benchmark_reports` DuckDB schema, `ReportStatus` (`draft | published`), `ReportImmutableError`, `draft` create/get/update (accepting only `completed` and `budget_stopped` runs; warning & pruning deleted runs on draft read), `publish_report()` (freezing `snapshot_json` immutably), `duplicate_report()` (cloning to new `draft`), `delete_report()`, `Parity Guard` (`dataset`, `tier_scope`, `enable_l1`, `limit_cases`, `budget_stopped` caveats), `run_case_evaluations` slice aggregation (`threat_domain`, `analysis_tier`, `inference_rtt_ms`, `retry_wait_ms`), and metadata-only `JSON` + `<benchmark_report>` `Markdown` bundle builder (max 5 FN + 5 FP per run, max 10 common-dataset disagreements, zero raw `tool_arguments`/`context` payloads).
   - **Acceptance Criteria:**
-    - [x] All 4 dialect payload/response/usage/refusal edge cases have explicit failing tests prior to implementation (RED).
-    - [x] Secret scrubbing test verifies `Authorization` / API key strings never appear in `raw_output` or logged exceptions.
-  - **Verification:** `.venv/bin/python -m pytest tests/test_systemone_cloud_adapter.py` (expected RED failure before Task 7)
-  - **Dependencies:** Task 2, Task 4
-  - **Files:** `tests/test_systemone_cloud_adapter.py`
-  - **Estimated Scope:** Small (1 file)
+    - [x] `benchmark_reports` initializes idempotently in DuckDB.
+    - [x] `draft` rejects `failed`/`running`/`pending` runs and accepts `completed`/`budget_stopped`.
+    - [x] `publish_report()` freezes `snapshot_json`; subsequent `update_draft_report()` raises `ReportImmutableError`, and deleting an underlying run from `run_history` does not alter the published report.
+    - [x] `Parity Guard` detects dataset, `tier_scope`, `enable_l1`, `limit_cases`, and `budget_stopped` mismatches.
+    - [x] Exported `JSON` and `Markdown` contain exact `0–100%` metrics, `EvalStatus` counts, domain/tier slices, and metadata-only failure/discrepancy lists with zero raw payloads.
+  - **Verification:** `.venv/bin/python -m pytest tests/test_reports_api.py -k "registry" -v`
+  - **Dependencies:** Task 2
+  - **Files:** `adapters/report_registry.py`, `tests/test_reports_api.py`
+  - **Estimated Scope:** Medium (2 files)
 
-- [x] **Task 7: `SystemOneCloudAdapter` & `QuestionProfile` Implementation (TDD GREEN)**
-  - **Description:** Implement `ProviderDialect`, `QuestionProfile`, and `SystemOneCloudAdapter(BaseModelAdapter)` in `adapters/systemone_cloud_adapter.py` using thread-local `httpx.Client` connection pooling (stateless payload per case), jittered exponential backoff + `Retry-After`, pre-flight `api_key_env` validation, `max_body_bytes` overflow -> `SKIPPED`, and wire it into `adapters/cloud_registry.py` (`resolve_adapter`) and `adapters/__init__.py`.
+- [x] **Task 5: FastAPI `/api/reports*` Endpoints & Export Integration Tests**
+  - **Description:** Add report Pydantic schemas in `web/schemas.py` and expose `GET/POST /api/reports`, `GET/PUT/DELETE /api/reports/{report_id}`, `POST /api/reports/{report_id}/publish`, `POST /api/reports/{report_id}/duplicate`, and `GET /api/reports/{report_id}/export?format=md|json` in `web/app.py` under `DB_WRITE_LOCK`. Complete full API test coverage in `tests/test_reports_api.py`.
   - **Acceptance Criteria:**
-    - [x] All tests in `tests/test_systemone_cloud_adapter.py` pass 100% (GREEN).
-    - [x] `resolve_adapter()` instantiates `SystemOneCloudAdapter` cleanly for any enabled DuckDB `cloud_models` row.
-    - [x] Every HTTP request carries zero cross-case conversation history and scrubs auth headers on error/storage.
-  - **Verification:** `.venv/bin/python -m pytest tests/test_systemone_cloud_adapter.py tests/test_cloud_registry.py -v`
+    - [x] All `/api/reports*` endpoints work end-to-end; `PUT` on a `published` report returns `409 Conflict`.
+    - [x] `/export?format=md` returns `text/markdown` wrapped in `<benchmark_report>` and `/export?format=json` returns valid JSON dossier.
+    - [x] Full `tests/test_reports_api.py` passes including pagination, filtering, draft pruning, publish sealing, duplicate, delete, and export checks.
+  - **Verification:** `.venv/bin/python -m pytest tests/test_reports_api.py -v`
+  - **Dependencies:** Task 4
+  - **Files:** `web/schemas.py`, `web/app.py`, `tests/test_reports_api.py`
+  - **Estimated Scope:** Medium (3 files)
+
+### 🛑 Checkpoint 3: After Tasks 4–5 (`report-studio-backend-and-bundle`)
+- [x] `tests/test_reports_api.py` passes 100%.
+
+---
+
+## Phase 4: Web Studio UI Redesign & `Matrix Studio` Retirement (`web-studio-ui-redesign`)
+
+- [x] **Task 6: `Models` Tab UI (Local Read-Only + Cloud Provider/Model CRUD Modals)**
+  - **Description:** Add the `Models` navigation button and page in `web/templates/index.html`, styles in `web/static/index.css`, and frontend CRUD logic in `web/static/app.js`: read-only Local Adapters table, Cloud Providers table (`.env` presence badge + Add/Edit/Delete modal), Cloud Models table (`enabled` toggle + Add/Edit/Delete modal + read-only YAML download), refreshing the `Dashboard` Model Adapter selector whenever cloud models change.
+  - **Acceptance Criteria:**
+    - [x] `Models` tab renders local code-first adapters read-only and Cloud Providers/Models with full create/edit/toggle/delete controls.
+    - [x] `.env` status displays as a clear boolean badge ("Configured" / "Missing") without exposing secrets.
+    - [x] Adding or toggling a cloud model immediately updates the `Dashboard` Model Adapter dropdown.
+  - **Verification:** Manual check via `uvicorn web.app:app` + `GET /` HTML assertions in `tests/test_experiment_api.py`
+  - **Dependencies:** Task 3
+  - **Files:** `web/templates/index.html`, `web/static/app.js`, `web/static/index.css`
+  - **Estimated Scope:** Medium (3 files)
+
+- [x] **Task 7: Retire `Matrix Studio` UI → Build `Report Studio` & Paginated Multi-Select `History` + Update Tests**
+  - **Description:** Remove `Matrix Studio` nav button, `page-matrix` HTML, and ~400 lines of dead Matrix Studio JS from `web/templates/index.html` and `web/static/app.js`. Upgrade `History` with pagination (`25/50/100`), dataset/model/status filters, persistent multi-page checkboxes (`Set<run_id>`) for `completed`/`budget_stopped` runs, and a sticky action bar (*"N selected → Create Draft Report / Add to Draft"*). Build read-only `Report Studio` UI (saved reports sidebar, draft editor, parity warning banner, Publish/Seal confirmation, Duplicate as Draft, Delete, one-click Copy Markdown / Download `.md` / Download `.json`). Update `tests/test_experiment_api.py` to assert `Models` + `Report Studio` tabs while keeping `/api/experiments` backend tests passing.
+  - **Acceptance Criteria:**
+    - [x] `GET /` contains `page-models` and `page-reports` and no longer contains `Matrix Studio` or `page-matrix`.
+    - [x] `History` paginates via `X-Total-Count` and preserves checked `run_id`s across page changes.
+    - [x] `Report Studio` enforces read-only view on `published` reports (hides/disables edit controls, shows Sealed badge) and provides working Copy Markdown + Download `.md`/`.json`.
+    - [x] `tests/test_experiment_api.py` and full `make test-unit` pass with zero regressions.
+  - **Verification:** `.venv/bin/python -m pytest tests/test_experiment_api.py tests/test_reports_api.py tests/test_cloud_models_api.py -v && make test-unit && .venv/bin/ruff check adapters/ web/ tests/`
   - **Dependencies:** Task 5, Task 6
-  - **Files:** `adapters/systemone_cloud_adapter.py`, `adapters/cloud_registry.py`, `adapters/__init__.py`
-  - **Estimated Scope:** Medium (3 files)
-
-### 🛑 Checkpoint 3: After Tasks 6–7 (`systemone-cloud-adapter`)
-- [x] `tests/test_systemone_cloud_adapter.py` and `tests/test_cloud_registry.py` pass 100%
-- [x] Phase 8 + unit test suite passes with zero regressions
-
----
-
-## Phase 4: Cloud Matrix Execution, Resume & Web Parity
-
-- [x] **Task 8: Cloud Matrix Concurrency, Single DuckDB Writer, Atomic Budget Cap & `--resume-run-id`**
-  - **Description:** Upgrade `benchmark_matrix.py` and `HybridCascadeAdapter` (in `benchmark_runner.py`) for safe paid cloud runs: migrate `run_history` & `run_case_evaluations` with Phase 8 columns, standardize `run_history` metrics on `0.0–100.0%` (normalizing legacy `<= 1.0` rows), tag `CLOUD_DECISION_API` in `resolve_runtime_tier()`/`render_leaderboard()`, enforce `ORDER BY id` in `load_test_cases()`, execute `ThreadPoolExecutor` bounded concurrency with single DuckDB writer lock + pre-dispatch atomic `max_cost_usd` reservation, implement `config_hash`-validated `--resume-run-id`, skip `flush_unified_memory()` on cloud runs, and make `HybridCascadeAdapter` thread-safe (`threading.Lock`) with L2 telemetry passthrough.
-  - **Acceptance Criteria:**
-    - [x] `tests/test_cloud_execution_resume.py` verifies concurrent `ThreadPoolExecutor` writes via single writer lock without DuckDB errors.
-    - [x] Atomic `max_cost_usd` reservation stops dispatch before exceeding budget across N concurrent workers.
-    - [x] `--resume-run-id` verifies `config_hash`, skips prior `OK`/`SKIPPED`, retries `ERROR`, and rejects drifted configs.
-    - [x] `run_history` metrics in `benchmark_matrix.py` match `0.0–100.0%` and `eval_status != 'OK'` rows are excluded from `TP/TN/FP/FN`.
-  - **Verification:** `.venv/bin/python -m pytest tests/test_cloud_execution_resume.py tests/test_benchmark_matrix.py -v`
-  - **Dependencies:** Task 3, Task 7
-  - **Files:** `benchmark_matrix.py`, `benchmark_runner.py`, `tests/test_cloud_execution_resume.py`, `tests/test_benchmark_matrix.py`
+  - **Files:** `web/templates/index.html`, `web/static/app.js`, `web/static/index.css`, `tests/test_experiment_api.py`
   - **Estimated Scope:** Medium (4 files)
 
-- [x] **Task 9: Web Backend Schema Parity, Explicit-Column Insert & `asyncio.to_thread` Safety**
-  - **Description:** Update `web/schemas.py` (`CLOUD_DECISION_API`, `eval_status`, nullable `predicted_blocked`/`correct`, token/cost/latency fields) and `web/app.py` (replace positional `SELECT *` `INSERT OR REPLACE` into `run_case_evaluations` with explicit column list, replace silent `MockSecurityAdapter()` fallback with explicit failure / `resolve_adapter()`, wrap sync `adapter.evaluate()` inside `asyncio.to_thread()`, exclude non-`OK` rows from `TP/TN/FP/FN` & `api_compare_runs`, and persist `runtime_tier`/`experiment_id`).
-  - **Acceptance Criteria:**
-    - [x] `web/app.py` executes explicit-column `INSERT OR REPLACE INTO run_case_evaluations (...)` cleanly against migrated schema.
-    - [x] Unknown `model_name` returns explicit error (no silent `MockSecurityAdapter()` execution).
-    - [x] Synchronous cloud retries inside `execute_benchmark()` run via `asyncio.to_thread()` without blocking FastAPI WebSockets.
-    - [x] `tests/test_relational_storage.py`, `tests/test_discrepancy_api.py`, and `tests/test_experiment_registry.py` pass with extended Phase 8 columns.
-  - **Verification:** `.venv/bin/python -m pytest tests/test_relational_storage.py tests/test_experiment_api.py tests/test_discrepancy_api.py -v`
-  - **Dependencies:** Task 8
-  - **Files:** `web/schemas.py`, `web/app.py`, `tests/test_relational_storage.py`, `tests/test_experiment_api.py`
-  - **Estimated Scope:** Medium (4 files)
-
-### 🛑 Checkpoint 4: Final End-to-End Verification & Smoke Run
-- [ ] Run full regression suite: `make test-unit` (68/68 Phase 8 + core unit tests pass; 19 pre-existing failures in full `pytest tests/` due to missing local `data/processed/*.parquet`, `.scratch/kev`, `torch`, and pre-existing `test_list_experiments` label mismatch)
-- [x] Import `config/cloud_models/default_systemone.yaml` via `scripts/manage_cloud_models.py`
-- [ ] Execute 2-case live sanity check & 200-case smoke matrix (`--models laya-mlx,ollama-d1,or-jev-1.14 --max-cost-usd 0.50`) and verify `CLOUD_DECISION_API`, `cost_usd`, `inference_rtt_ms`, and `eval_status` in DuckDB
+### 🛑 Checkpoint 4: Final Verification
+- [x] `make test-unit` passes 100% with zero regressions.
+- [x] `.venv/bin/ruff check adapters/ web/ tests/` passes cleanly.
+- [x] `benchmark_matrix.py --help` still works intact.

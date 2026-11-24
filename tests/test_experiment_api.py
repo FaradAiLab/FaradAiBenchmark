@@ -141,15 +141,18 @@ def test_run_nonexistent_experiment(client):
     assert response.status_code == 404
 
 
-def test_dashboard_renders_matrix_studio(client):
-    """Verify GET / renders HTML dashboard containing Matrix Studio tab and modal."""
+def test_dashboard_renders_models_and_report_studio(client):
+    """Verify GET / renders Models and Report Studio tabs and retires Matrix Studio UI (ADR 0012)."""
     response = client.get("/")
     assert response.status_code == 200
     html = response.text
-    assert "Matrix Studio" in html
-    assert "page-matrix" in html
-    assert "new-template-modal" in html
-    assert "matrix-template-select" in html
+    assert "page-models" in html
+    assert "page-reports" in html
+    assert "Report Studio" in html
+    assert "cloud-model-modal" in html
+    assert "cloud-provider-modal" in html
+    assert "Matrix Studio" not in html
+    assert "page-matrix" not in html
 
 
 def test_api_datasets_order_and_core_suites(client):

@@ -19,7 +19,8 @@
 
     <nav class="nav">
         <button class="nav-btn active" data-page="dashboard">Dashboard</button>
-        <button class="nav-btn" data-page="matrix">⚡ Matrix Studio</button>
+        <button class="nav-btn" data-page="models">☁️ Models</button>
+        <button class="nav-btn" data-page="reports">📊 Report Studio</button>
         <button class="nav-btn" data-page="compare">⚖️ Compare Runs</button>
         <button class="nav-btn" data-page="test-cases">🔍 Test Cases</button>
         <button class="nav-btn" data-page="history">History</button>
@@ -54,9 +55,9 @@
                     <div class="form-hint" id="dataset-hint"></div>
                 </div>
 
-                <!-- NEW: Veri Kapsamı (Tier Selection) -->
+                <!-- NEW: Data Scope (Tier Selection) -->
                 <div class="form-group">
-                    <label class="form-label">Veri Kapsamı (Analysis Tier)</label>
+                    <label class="form-label">Data Scope (Analysis Tier)</label>
                     <div class="tier-radio-group">
                         <label class="tier-radio-btn active" id="tier-btn-all">
                             <input type="radio" name="tier_scope" value="all" checked>
@@ -73,11 +74,11 @@
                         <label class="tier-radio-btn" id="tier-btn-semantic">
                             <input type="radio" name="tier_scope" value="semantic">
                             <span class="tier-icon">🧠</span>
-                            <span class="tier-label">Semantik</span>
+                            <span class="tier-label">Semantic</span>
                             <span class="tier-count" id="tier-count-semantic">—</span>
                         </label>
                     </div>
-                    <div class="form-hint" id="tier-scope-desc">Tüm veri kümesi (Statik regex/DLP + Semantik LLM senaryoları).</div>
+                    <div class="form-hint" id="tier-scope-desc">Full dataset (Static regex/DLP + Semantic LLM scenarios).</div>
                 </div>
 
                 <div class="form-group">
@@ -88,24 +89,24 @@
                     <div class="form-hint" id="model-hint"></div>
                 </div>
 
-                <!-- NEW: L1 Statik Kural Filtresi (Fail-Fast) Radio Buttons -->
+                <!-- NEW: L1 Static Rule Filter (Fail-Fast) Radio Buttons -->
                 <div class="form-group" id="l1-filter-container">
-                    <label class="form-label">L1 Statik Kural Filtresi (Fail-Fast)</label>
+                    <label class="form-label">L1 Static Rule Filter (Fail-Fast)</label>
                     <div class="l1-radio-group">
                         <label class="l1-radio-card active" id="l1-card-enable">
                             <input type="radio" name="enable_l1" value="true" checked>
                             <div class="l1-radio-indicator"></div>
                             <div class="l1-radio-info">
-                                <div class="l1-radio-title">⚡ L1 Statik Kural Dahil Et (Fail-Fast)</div>
-                                <div class="l1-radio-sub">Açık regex ve DLP ataklarını mikrosaniyede engeller, model yükünü hafifletir.</div>
+                                <div class="l1-radio-title">⚡ Include L1 Static Rules (Fail-Fast)</div>
+                                <div class="l1-radio-sub">Blocks explicit regex and DLP attacks in microseconds, reducing model load.</div>
                             </div>
                         </label>
                         <label class="l1-radio-card" id="l1-card-disable">
                             <input type="radio" name="enable_l1" value="false">
                             <div class="l1-radio-indicator"></div>
                             <div class="l1-radio-info">
-                                <div class="l1-radio-title">🚫 L1 Olmasın (Saf Model)</div>
-                                <div class="l1-radio-sub">Statik kurallar bypass edilir; tüm girdiler doğrudan seçilen modele iletilir.</div>
+                                <div class="l1-radio-title">🚫 Disable L1 (Pure Model)</div>
+                                <div class="l1-radio-sub">Bypasses static rules; all inputs are routed directly to the selected model.</div>
                             </div>
                         </label>
                     </div>
@@ -146,7 +147,7 @@
                 <!-- Idle State -->
                 <div class="idle-state" id="idle-state">
                     <div class="idle-icon">🔬</div>
-                    <p>Benchmark başlatmak için sol panelden<br>dataset ve model seçin</p>
+                    <p>Select a dataset and model from the left panel<br>to start a benchmark</p>
                 </div>
 
                 <!-- Progress Ring (hidden initially) -->
@@ -165,7 +166,7 @@
                         </svg>
                         <div class="progress-center-text">
                             <div class="progress-pct" id="progress-pct">0%</div>
-                            <div class="progress-label">tamamlandı</div>
+                            <div class="progress-label">completed</div>
                         </div>
                     </div>
 
@@ -186,7 +187,7 @@
 
                     <div id="progress-complete-actions" style="display: none; margin-top: var(--space-4); width: 100%;">
                         <button class="btn btn-primary" id="btn-view-last-run" style="width: 100%; padding: var(--space-3); font-size: 0.9rem;">
-                            🔍 Detaylı Sonuçları & Test Verilerini Gör
+                            🔍 View Detailed Results & Test Cases
                         </button>
                     </div>
                 </div>
@@ -250,96 +251,209 @@
         </div>
     </div>
 
-    <!-- ─── Matrix Studio Page ────────────────────────────────── -->
-    <div class="page" id="page-matrix">
+    <!-- ─── Models & Adapters Dashboard Page (ADR 0012) ──────── -->
+    <div class="page" id="page-models">
         <div class="page-header" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-4); margin-bottom: var(--space-6);">
             <div>
-                <h1 class="page-title">⚡ Declarative Matrix Studio</h1>
-                <p class="page-subtitle">DuckDB-tabanlı çoklu model test matrislerini yönetin, Apple Silicon (MLX) ve Ollama modellerini deklaratif olarak karşılaştırın.</p>
+                <h1 class="page-title">☁️ Models &amp; Adapters Registry</h1>
+                <p class="page-subtitle">Manage DuckDB-backed Cloud System One providers &amp; models (Single Source of Truth) and inspect local code-first adapters.</p>
             </div>
-            <button class="btn btn-secondary" onclick="openNewTemplateModal()">
-                ➕ Yeni Şablon Oluştur
-            </button>
+            <div style="display: flex; gap: var(--space-2); flex-wrap: wrap;">
+                <button class="btn btn-secondary" onclick="openProviderModal()">➕ Add Cloud Provider</button>
+                <button class="btn btn-primary" onclick="openCloudModelModal()">➕ Add Cloud Model</button>
+                <a class="btn btn-secondary" href="/api/cloud-config/export-yaml" download="cloud_models_export.yaml">⬇️ Export YAML</a>
+            </div>
         </div>
 
-        <div class="dashboard-grid">
-            <!-- LEFT: Template Selector & Configuration Card -->
+        <!-- Cloud Models Card -->
+        <div class="card" style="margin-bottom: var(--space-6);">
+            <div class="card-title" style="display: flex; align-items: center; justify-content: space-between;">
+                <span><span class="icon">☁️</span> Cloud Decision Models (Editable)</span>
+                <span class="badge badge-info" id="cloud-models-count">0 Models</span>
+            </div>
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Model ID</th>
+                            <th>Provider &amp; Dialect</th>
+                            <th>Remote Slug</th>
+                            <th>Thresholds (E / M / T)</th>
+                            <th>Price ($/1M)</th>
+                            <th>.env Key</th>
+                            <th>Status</th>
+                            <th style="text-align: right;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cloud-models-tbody">
+                        <tr><td colspan="8" class="empty-state">Loading cloud models...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Cloud Providers Card -->
+        <div class="card" style="margin-bottom: var(--space-6);">
+            <div class="card-title" style="display: flex; align-items: center; justify-content: space-between;">
+                <span><span class="icon">🔌</span> Cloud Providers (Editable)</span>
+                <span class="badge badge-info" id="cloud-providers-count">0 Providers</span>
+            </div>
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Provider ID</th>
+                            <th>Display Name</th>
+                            <th>Dialect</th>
+                            <th>Endpoint</th>
+                            <th>API Key Env</th>
+                            <th>Models</th>
+                            <th>Concurrency</th>
+                            <th style="text-align: right;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cloud-providers-tbody">
+                        <tr><td colspan="8" class="empty-state">Loading cloud providers...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Local Code-First Adapters Card (Read-Only) -->
+        <div class="card">
+            <div class="card-title" style="display: flex; align-items: center; justify-content: space-between;">
+                <span><span class="icon">🍎</span> Local Code-First Adapters (Read-Only · ADR 0010)</span>
+                <span class="badge badge-pending" id="local-models-count">0 Adapters</span>
+            </div>
+            <div class="table-container">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Adapter ID</th>
+                            <th>Name</th>
+                            <th>Backend</th>
+                            <th>Quantization</th>
+                            <th>Status</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody id="local-models-tbody">
+                        <tr><td colspan="6" class="empty-state">Loading local adapters...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ─── Periodic Report Studio Page (ADR 0012) ───────────── -->
+    <div class="page" id="page-reports">
+        <div class="page-header" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-4); margin-bottom: var(--space-6);">
+            <div>
+                <h1 class="page-title">📊 Periodic Report Studio</h1>
+                <p class="page-subtitle">Read-only curation of completed benchmark runs into sealed periodic snapshots &amp; AI-Ready Markdown / JSON bundles.</p>
+            </div>
+            <div style="display: flex; gap: var(--space-2); flex-wrap: wrap;">
+                <button class="btn btn-secondary" onclick="switchPage('history')">📜 Select Runs in History</button>
+                <button class="btn btn-primary" onclick="createEmptyDraftReport()">➕ New Draft Report</button>
+            </div>
+        </div>
+
+        <div class="report-studio-grid">
+            <!-- LEFT: Saved Reports Sidebar -->
             <div class="card">
-                <div class="card-title"><span class="icon">📋</span> Test Matrisi Şablonu</div>
-
-                <div class="form-group">
-                    <label class="form-label" for="matrix-template-select">Kayıtlı Şablon Seçin</label>
-                    <div style="display: flex; gap: var(--space-2);">
-                        <select class="form-select" id="matrix-template-select" onchange="onMatrixTemplateChanged()" style="flex: 1;">
-                            <option value="">Şablonlar yükleniyor...</option>
-                        </select>
-                        <button class="btn btn-secondary btn-sm" onclick="loadExperimentTemplates()" title="Yenile">🔄</button>
-                    </div>
+                <div class="card-title" style="display: flex; align-items: center; justify-content: space-between;">
+                    <span><span class="icon">🗂️</span> Saved Reports</span>
+                    <button class="btn btn-secondary btn-sm" onclick="loadReportsPage()" title="Refresh">🔄</button>
                 </div>
-
-                <!-- Template Details Summary -->
-                <div id="matrix-template-info" style="margin-bottom: var(--space-5); padding: var(--space-4); background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: var(--radius-md);">
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: var(--space-2);">
-                        <div class="font-bold text-base" id="matrix-tpl-name">—</div>
-                        <span class="badge badge-pending mono text-xs" id="matrix-tpl-id">—</span>
-                    </div>
-                    <div class="text-xs text-muted" id="matrix-tpl-desc" style="margin-bottom: var(--space-3);">—</div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); font-size: 0.8rem;">
-                        <div><span class="text-muted">Dataset:</span> <span class="mono text-xs" id="matrix-tpl-dataset" style="word-break: break-all;">—</span></div>
-                        <div><span class="text-muted">Vaka Limiti:</span> <span class="font-semibold" id="matrix-tpl-limit">—</span></div>
-                    </div>
-                </div>
-
-                <!-- Execution Controls -->
-                <div class="form-group">
-                    <label class="form-label" for="matrix-override-limit">Vaka Limiti Geçersiz Kıl (Opsiyonel)</label>
-                    <input type="number" id="matrix-override-limit" class="form-input" placeholder="Şablon varsayılanını kullan (boş bırakın)" min="1" max="15000">
-                </div>
-
-                <div style="display: flex; gap: var(--space-3); margin-top: var(--space-4);">
-                    <button class="btn btn-primary" id="btn-run-matrix" onclick="runCurrentMatrixTemplate()" style="flex: 1;">
-                        ⚡ Matrisi Başlat
-                    </button>
-                    <button class="btn btn-danger btn-sm" id="btn-delete-template" onclick="deleteCurrentMatrixTemplate()" title="Şablonu Sil" style="display: none;">
-                        🗑️
-                    </button>
+                <div id="reports-list-container" class="reports-list">
+                    <div class="empty-state">Loading reports...</div>
                 </div>
             </div>
 
-            <!-- RIGHT: Models Matrix Breakdown & Live Execution Status -->
-            <div class="card">
-                <div class="card-title" style="display: flex; align-items: center; justify-content: space-between;">
-                    <span><span class="icon">🔬</span> Modeller ve Çalışma Seviyeleri (Dual-Track)</span>
-                    <span class="badge badge-info" id="matrix-model-count">0 Model</span>
+            <!-- RIGHT: Report Workspace -->
+            <div class="card" id="report-workspace-card">
+                <div id="report-empty-state" class="idle-state">
+                    <div class="idle-icon">📑</div>
+                    <p>Select a saved report on the left, or pick completed runs in <strong>History</strong> to create a new periodic report.</p>
                 </div>
 
-                <!-- Matrix Active Status Banner (hidden when idle) -->
-                <div id="matrix-live-status-banner" style="display: none; margin-bottom: var(--space-4); padding: var(--space-3) var(--space-4); background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: var(--radius-md);">
-                    <div style="display: flex; align-items: center; justify-content: space-between;">
-                        <div style="display: flex; align-items: center; gap: var(--space-3);">
-                            <span class="inline-spinner" style="width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.2); border-top-color: var(--accent-cyan); border-radius: 50%; animation: spin 0.6s linear infinite; display: inline-block;"></span>
-                            <span class="font-semibold text-sm" id="matrix-live-status-text">Matris çalışıyor...</span>
+                <div id="report-editor-container" style="display: none;">
+                    <!-- Top Bar -->
+                    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-4); padding-bottom: var(--space-3); border-bottom: 1px solid var(--border-color);">
+                        <div style="display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap;">
+                            <span class="mono text-sm text-muted" id="rpt-active-id">—</span>
+                            <span id="rpt-status-badge"></span>
+                            <span class="text-xs text-muted" id="rpt-published-at"></span>
                         </div>
-                        <span class="mono text-xs text-muted" id="matrix-live-progress-badge">0 / 0</span>
+                        <div style="display: flex; gap: var(--space-2); flex-wrap: wrap;">
+                            <button class="btn btn-secondary btn-sm" id="btn-rpt-save" onclick="saveCurrentDraft()">💾 Save Draft</button>
+                            <button class="btn btn-primary btn-sm" id="btn-rpt-publish" onclick="publishCurrentReport()">🔒 Publish &amp; Seal</button>
+                            <button class="btn btn-secondary btn-sm" id="btn-rpt-duplicate" onclick="duplicateCurrentReport()">📋 Duplicate as Draft</button>
+                            <button class="btn btn-danger btn-sm" id="btn-rpt-delete" onclick="deleteCurrentReport()">🗑️ Delete</button>
+                        </div>
                     </div>
-                </div>
 
-                <!-- Models Table in Template -->
-                <div class="table-container" style="max-height: 480px; overflow-y: auto;">
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>Model Adapter</th>
-                                <th>Runtime Tier</th>
-                                <th>L1 Cascade</th>
-                                <th>Thresholds</th>
-                                <th>Durum</th>
-                            </tr>
-                        </thead>
-                        <tbody id="matrix-models-tbody">
-                            <tr><td colspan="5" class="empty-state">Şablon seçiniz...</td></tr>
-                        </tbody>
-                    </table>
+                    <!-- Pruned Runs / Parity Warnings -->
+                    <div id="rpt-pruned-alert" class="parity-warning-box" style="display: none;"></div>
+                    <div id="rpt-parity-warnings" class="parity-warning-box" style="display: none;"></div>
+
+                    <!-- Metadata Fields -->
+                    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: var(--space-3); margin-bottom: var(--space-3);">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label class="form-label" for="rpt-title-input">Report Title *</label>
+                            <input type="text" id="rpt-title-input" class="form-input" placeholder="e.g., Nov 2026 Local MLX vs Cloud Jev">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label class="form-label" for="rpt-period-input">Period / Release Tag</label>
+                            <input type="text" id="rpt-period-input" class="form-input" placeholder="e.g., 2026-11 / Q4">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="rpt-notes-input">Researcher Notes &amp; Context (included in AI-Ready Bundle)</label>
+                        <textarea id="rpt-notes-input" class="form-input" rows="2" placeholder="Context, evaluation goals, or caveats for the AI report writer..."></textarea>
+                    </div>
+
+                    <!-- Included Runs Table -->
+                    <div style="margin-bottom: var(--space-5);">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-2);">
+                            <span class="form-label" style="margin-bottom: 0;">Included Benchmark Runs (<span id="rpt-runs-count">0</span>)</span>
+                            <button class="btn btn-secondary btn-sm" id="btn-rpt-add-from-history" onclick="switchPage('history')">➕ Add Runs from History</button>
+                        </div>
+                        <div class="table-container" style="max-height: 260px; overflow-y: auto;">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Run ID</th>
+                                        <th>Model</th>
+                                        <th>Tier</th>
+                                        <th>Dataset</th>
+                                        <th>Acc %</th>
+                                        <th>F1 %</th>
+                                        <th>FPR %</th>
+                                        <th>Cost</th>
+                                        <th>Status</th>
+                                        <th style="width: 48px;"></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="rpt-runs-tbody">
+                                    <tr><td colspan="10" class="empty-state">No runs selected yet.</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- AI-Ready Bundle Export Actions & Preview -->
+                    <div>
+                        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-2);">
+                            <span class="form-label" style="margin-bottom: 0;">🤖 AI-Ready Report Bundle (Metadata-Only · Zero Raw Payloads)</span>
+                            <div style="display: flex; gap: var(--space-2); flex-wrap: wrap;">
+                                <button class="btn btn-primary btn-sm" onclick="copyReportMarkdown()">📋 Copy Markdown</button>
+                                <button class="btn btn-secondary btn-sm" onclick="downloadReportExport('md')">⬇️ Download .md</button>
+                                <button class="btn btn-secondary btn-sm" onclick="downloadReportExport('json')">⬇️ Download .json</button>
+                            </div>
+                        </div>
+                        <pre id="rpt-markdown-preview" class="markdown-preview-box"></pre>
+                    </div>
                 </div>
             </div>
         </div>
@@ -350,7 +464,7 @@
         <div class="page-header">
             <div>
                 <h1 class="page-title">⚖️ Compare Runs & Discrepancy Analyzer</h1>
-                <p class="page-subtitle">İki benchmark koşumunu karşılaştırın, mutabakat oranını ve ayrışan (zıt) güvenlik kararlarını analiz edin.</p>
+                <p class="page-subtitle">Compare two benchmark runs, analyze agreement rate, and inspect divergent security verdicts.</p>
             </div>
         </div>
 
@@ -371,7 +485,7 @@
                     </select>
                 </div>
                 <button class="btn btn-primary" id="btn-compare-execute" onclick="executeComparison()">
-                    ⚡ Karşılaştır
+                    ⚡ Compare
                 </button>
             </div>
         </div>
@@ -409,16 +523,16 @@
                 <div class="case-header-row">
                     <div>
                         <div class="card-title" style="margin-bottom: 2px;"><span class="icon">⚡</span> Discrepancy Diff Explorer</div>
-                        <p class="text-sm text-muted">İki modelin birbirine zıt karar verdiği test vakaları (satıra tıklayarak payload'u inceleyin)</p>
+                        <p class="text-sm text-muted">Test cases where the two models produced conflicting verdicts (click a row to inspect the payload)</p>
                     </div>
                 </div>
 
                 <!-- Discrepancy Filter Buttons -->
                 <div class="case-filters" style="margin-top: var(--space-3); margin-bottom: var(--space-4);">
-                    <button class="case-filter-chip active" data-compare-filter="all" onclick="filterDiscrepancies('all')">Tüm Zıt Kararlar (<span id="count-disc-all">0</span>)</button>
-                    <button class="case-filter-chip filter-correct" data-compare-filter="a_missed_b_caught" onclick="filterDiscrepancies('a_missed_b_caught')">A Kaçırdı ➔ B Yakaladı (<span id="count-disc-b-better">0</span>)</button>
-                    <button class="case-filter-chip filter-warn" data-compare-filter="b_missed_a_caught" onclick="filterDiscrepancies('b_missed_a_caught')">B Kaçırdı ➔ A Yakaladı (<span id="count-disc-a-better">0</span>)</button>
-                    <button class="case-filter-chip filter-fp" data-compare-filter="fp_diff" onclick="filterDiscrepancies('fp_diff')">False Positive Ayrışması (<span id="count-disc-fp">0</span>)</button>
+                    <button class="case-filter-chip active" data-compare-filter="all" onclick="filterDiscrepancies('all')">All Discrepancies (<span id="count-disc-all">0</span>)</button>
+                    <button class="case-filter-chip filter-correct" data-compare-filter="a_missed_b_caught" onclick="filterDiscrepancies('a_missed_b_caught')">A Missed ➔ B Caught (<span id="count-disc-b-better">0</span>)</button>
+                    <button class="case-filter-chip filter-warn" data-compare-filter="b_missed_a_caught" onclick="filterDiscrepancies('b_missed_a_caught')">B Missed ➔ A Caught (<span id="count-disc-a-better">0</span>)</button>
+                    <button class="case-filter-chip filter-fp" data-compare-filter="fp_diff" onclick="filterDiscrepancies('fp_diff')">False Positive Divergence (<span id="count-disc-fp">0</span>)</button>
                 </div>
 
                 <div class="table-container" style="max-height: 520px; overflow-y: auto;">
@@ -587,18 +701,64 @@
 
     <!-- ─── History Page ────────────────────────────────────── -->
     <div class="page" id="page-history">
-        <div class="page-header">
+        <div class="page-header" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-4); margin-bottom: var(--space-4);">
             <div>
                 <h1 class="page-title">📜 Benchmark History</h1>
-                <p class="page-subtitle">Tüm benchmark çalıştırma kayıtları</p>
+                <p class="page-subtitle">Filter, paginate, and select completed or budget-stopped runs to curate periodic reports.</p>
             </div>
         </div>
 
-        <div class="card">
+        <!-- Sticky Multi-Page Selection Bar -->
+        <div id="history-selection-bar" class="history-selection-bar" style="display: none;">
+            <div style="display: flex; align-items: center; gap: var(--space-3);">
+                <span class="badge badge-info" id="history-selected-count">0 selected</span>
+                <span class="text-sm text-muted">Selection persists across pages</span>
+            </div>
+            <div style="display: flex; gap: var(--space-2); flex-wrap: wrap;">
+                <button class="btn btn-primary btn-sm" onclick="createReportFromHistorySelection()">📊 Create Draft Report</button>
+                <button class="btn btn-secondary btn-sm" id="btn-history-add-to-draft" onclick="addHistorySelectionToActiveDraft()" style="display: none;">➕ Add to Active Draft</button>
+                <button class="btn btn-secondary btn-sm" onclick="clearHistorySelection()">✕ Clear</button>
+            </div>
+        </div>
+
+        <!-- History Filters -->
+        <div class="card" style="margin-bottom: var(--space-4);">
+            <div style="display: grid; grid-template-columns: 1fr 1fr 180px 140px auto; gap: var(--space-3); align-items: end;">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label" for="history-filter-dataset">Dataset</label>
+                    <input type="text" id="history-filter-dataset" class="form-input" placeholder="Filter dataset..." oninput="onHistoryFilterChanged()">
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label" for="history-filter-model">Model</label>
+                    <input type="text" id="history-filter-model" class="form-input" placeholder="Filter model..." oninput="onHistoryFilterChanged()">
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label" for="history-filter-status">Status</label>
+                    <select id="history-filter-status" class="form-select" onchange="onHistoryFilterChanged()">
+                        <option value="all">All Statuses</option>
+                        <option value="completed">✓ Completed</option>
+                        <option value="budget_stopped">💰 Budget Stopped</option>
+                        <option value="error">✕ Error</option>
+                    </select>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label class="form-label" for="history-page-size">Per Page</label>
+                    <select id="history-page-size" class="form-select" onchange="onHistoryPageSizeChanged()">
+                        <option value="25" selected>25 / page</option>
+                        <option value="50">50 / page</option>
+                        <option value="100">100 / page</option>
+                    </select>
+                </div>
+                <button class="btn btn-secondary" onclick="resetHistoryFilters()">✕ Reset</button>
+            </div>
+        </div>
+
+        <div class="card" style="padding: 0; overflow: hidden;">
             <div class="table-container">
                 <table class="data-table">
                     <thead>
                         <tr>
+                            <th style="width: 36px; text-align: center;" title="Select for Report Studio">☑</th>
                             <th>Run ID</th>
                             <th>Dataset</th>
                             <th>Model</th>
@@ -611,9 +771,21 @@
                         </tr>
                     </thead>
                     <tbody id="history-tbody">
-                        <tr><td colspan="9" class="empty-state">Loading...</td></tr>
+                        <tr><td colspan="10" class="empty-state">Loading...</td></tr>
                     </tbody>
                 </table>
+            </div>
+            <div class="tc-pagination-bar">
+                <div class="tc-pagination-info" id="history-pagination-info">Showing 0 - 0 of 0 runs</div>
+                <div class="tc-pagination-controls">
+                    <button class="btn btn-sm btn-secondary" id="history-page-first" onclick="goToHistoryPage(1)">« First</button>
+                    <button class="btn btn-sm btn-secondary" id="history-page-prev" onclick="goToHistoryPage(state.history.page - 1)">‹ Prev</button>
+                    <div class="tc-page-indicator">
+                        Page <span class="mono font-bold" id="history-current-page">1</span> of <span class="mono font-bold" id="history-total-pages">1</span>
+                    </div>
+                    <button class="btn btn-sm btn-secondary" id="history-page-next" onclick="goToHistoryPage(state.history.page + 1)">Next ›</button>
+                    <button class="btn btn-sm btn-secondary" id="history-page-last" onclick="goToHistoryPage(state.history.totalPages)">Last »</button>
+                </div>
             </div>
         </div>
     </div>
@@ -672,20 +844,20 @@
             <div class="case-header-row">
                 <div class="modal-section-title" style="margin-bottom: 0;">
                     Test Case Results
-                    <span class="text-muted text-sm" style="font-weight:400; text-transform:none; letter-spacing:0;">— satıra tıklayarak payload detayını görün</span>
+                    <span class="text-muted text-sm" style="font-weight:400; text-transform:none; letter-spacing:0;">— click a row to view payload details</span>
                 </div>
                 <div class="case-search-wrapper">
-                    <input type="text" id="case-search-input" class="case-search-input" placeholder="🔍 Case ID, tool veya domain ara..." oninput="handleCaseSearch(this.value)" />
+                    <input type="text" id="case-search-input" class="case-search-input" placeholder="🔍 Search Case ID, tool, or domain..." oninput="handleCaseSearch(this.value)" />
                 </div>
             </div>
 
             <!-- Filter Buttons -->
             <div class="case-filters">
-                <button class="case-filter-chip active" data-filter="all" onclick="filterCasesBy('all')">Tümü (<span id="count-all">0</span>)</button>
-                <button class="case-filter-chip filter-error" data-filter="mismatch" onclick="filterCasesBy('mismatch')">❌ Hatalar (<span id="count-mismatch">0</span>)</button>
+                <button class="case-filter-chip active" data-filter="all" onclick="filterCasesBy('all')">All (<span id="count-all">0</span>)</button>
+                <button class="case-filter-chip filter-error" data-filter="mismatch" onclick="filterCasesBy('mismatch')">❌ Errors (<span id="count-mismatch">0</span>)</button>
                 <button class="case-filter-chip filter-fp" data-filter="fp" onclick="filterCasesBy('fp')">⚠️ False Positive (<span id="count-fp">0</span>)</button>
                 <button class="case-filter-chip filter-fn" data-filter="fn" onclick="filterCasesBy('fn')">⚠️ False Negative (<span id="count-fn">0</span>)</button>
-                <button class="case-filter-chip filter-correct" data-filter="correct" onclick="filterCasesBy('correct')">✓ Doğru (<span id="count-correct">0</span>)</button>
+                <button class="case-filter-chip filter-correct" data-filter="correct" onclick="filterCasesBy('correct')">✓ Correct (<span id="count-correct">0</span>)</button>
             </div>
 
             <div class="table-container" style="max-height: 340px; overflow-y: auto;">
@@ -713,52 +885,133 @@
 <div class="drawer-overlay" id="drawer-overlay" onclick="closeCaseDetail()"></div>
 <div class="case-detail-drawer" id="case-detail-drawer"></div>
 
-<!-- ═══════════════ Create Experiment Template Modal ═══════════════ -->
-<div class="modal-overlay" id="new-template-modal">
-    <div class="modal" style="max-width: 650px;">
+<!-- ═══════════════ Cloud Provider Modal (ADR 0012) ═══════════════ -->
+<div class="modal-overlay" id="cloud-provider-modal">
+    <div class="modal" style="max-width: 620px;">
         <div class="modal-header">
-            <div class="modal-title">➕ Yeni Test Matrisi Şablonu Oluştur</div>
-            <button class="modal-close" onclick="closeNewTemplateModal()">✕</button>
+            <div class="modal-title" id="prov-modal-title">➕ Add Cloud Provider</div>
+            <button class="modal-close" onclick="closeProviderModal()">✕</button>
         </div>
         <div class="modal-section" style="padding-top: var(--space-2);">
-            <div class="form-group">
-                <label class="form-label" for="tpl-create-id">Şablon Kimliği (Slug / ID) *</label>
-                <input type="text" id="tpl-create-id" class="form-input mono" placeholder="exp_custom_eval_matrix" required>
-            </div>
-            <div class="form-group">
-                <label class="form-label" for="tpl-create-name">Şablon Başlığı *</label>
-                <input type="text" id="tpl-create-name" class="form-input" placeholder="Örn: Dual-Track Custom Evaluation" required>
-            </div>
-            <div class="form-group">
-                <label class="form-label" for="tpl-create-desc">Açıklama</label>
-                <input type="text" id="tpl-create-desc" class="form-input" placeholder="Deneyin amacı, hedefi ve model kapsamı...">
-            </div>
-            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: var(--space-3);">
+            <input type="hidden" id="prov-edit-mode" value="create">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3);">
                 <div class="form-group">
-                    <label class="form-label" for="tpl-create-dataset">Hedef Veri Kümesi (Parquet) *</label>
-                    <select id="tpl-create-dataset" class="form-select">
-                        <option value="data/processed/farad_decision_bench_v1.parquet" selected>🛡️ Farad-Decision-Bench-v1.0 (2,000 cases - Core Eval Suite)</option>
-                        <option value="data/processed/benchmark_train.parquet">🏋️ Benchmark Train (7,629 cases - Training Set)</option>
-                        <option value="data/processed/master_benchmark.parquet">🎯 Master Benchmark (9,629 cases - Full Pool)</option>
+                    <label class="form-label" for="prov-id">Provider ID *</label>
+                    <input type="text" id="prov-id" class="form-input mono" placeholder="openrouter" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="prov-display-name">Display Name *</label>
+                    <input type="text" id="prov-display-name" class="form-input" placeholder="OpenRouter Decisions API" required>
+                </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3);">
+                <div class="form-group">
+                    <label class="form-label" for="prov-dialect">Provider Dialect *</label>
+                    <select id="prov-dialect" class="form-select">
+                        <option value="OPENROUTER_DECISIONS">OPENROUTER_DECISIONS</option>
+                        <option value="TYPESAFE_SYSTEMONE">TYPESAFE_SYSTEMONE</option>
+                        <option value="LIQUID_SYSTEMONE">LIQUID_SYSTEMONE</option>
+                        <option value="PERPLEXITY_DECISIONS">PERPLEXITY_DECISIONS</option>
                     </select>
                 </div>
                 <div class="form-group">
-                    <label class="form-label" for="tpl-create-limit">Vaka Limiti</label>
-                    <input type="number" id="tpl-create-limit" class="form-input" placeholder="200" value="200" min="1">
+                    <label class="form-label" for="prov-api-key-env">API Key Env Var Name * (no raw key)</label>
+                    <input type="text" id="prov-api-key-env" class="form-input mono" placeholder="OPENROUTER_API_KEY" required>
                 </div>
             </div>
-
-            <!-- Model Selection Checkboxes -->
-            <div class="form-group">
-                <label class="form-label">Değerlendirilecek Modeller *</label>
-                <div id="tpl-create-models-list" style="max-height: 220px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: var(--space-2); background: rgba(0,0,0,0.2);">
-                    <!-- Dynamically populated checkboxes -->
+            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: var(--space-3);">
+                <div class="form-group">
+                    <label class="form-label" for="prov-base-url">Base URL (https://) *</label>
+                    <input type="text" id="prov-base-url" class="form-input mono" placeholder="https://openrouter.ai" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="prov-endpoint-path">Endpoint Path *</label>
+                    <input type="text" id="prov-endpoint-path" class="form-input mono" placeholder="/api/alpha/decisions" required>
                 </div>
             </div>
-
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--space-3);">
+                <div class="form-group">
+                    <label class="form-label" for="prov-timeout">Timeout (s)</label>
+                    <input type="number" id="prov-timeout" class="form-input" value="20" min="1" step="1">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="prov-concurrency">Max Concurrency</label>
+                    <input type="number" id="prov-concurrency" class="form-input" value="8" min="1" max="64">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="prov-rpm">RPM Limit (opt)</label>
+                    <input type="number" id="prov-rpm" class="form-input" placeholder="120" min="1">
+                </div>
+            </div>
             <div style="display: flex; justify-content: flex-end; gap: var(--space-3); margin-top: var(--space-4);">
-                <button class="btn btn-secondary" onclick="closeNewTemplateModal()">İptal</button>
-                <button class="btn btn-primary" onclick="submitCreateTemplate()">Kaydet ve Ekle</button>
+                <button class="btn btn-secondary" onclick="closeProviderModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="submitProviderForm()">Save Provider</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════ Cloud Model Modal (ADR 0012) ═══════════════ -->
+<div class="modal-overlay" id="cloud-model-modal">
+    <div class="modal" style="max-width: 620px;">
+        <div class="modal-header">
+            <div class="modal-title" id="cmodel-modal-title">➕ Add Cloud Model</div>
+            <button class="modal-close" onclick="closeCloudModelModal()">✕</button>
+        </div>
+        <div class="modal-section" style="padding-top: var(--space-2);">
+            <input type="hidden" id="cmodel-edit-mode" value="create">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3);">
+                <div class="form-group">
+                    <label class="form-label" for="cmodel-id">Model ID (lowercase slug) *</label>
+                    <input type="text" id="cmodel-id" class="form-input mono" placeholder="or-jev-1.14" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="cmodel-provider-id">Provider *</label>
+                    <select id="cmodel-provider-id" class="form-select"></select>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="cmodel-slug">Remote Model Slug *</label>
+                <input type="text" id="cmodel-slug" class="form-input mono" placeholder="typesafe/jev-1.14" required>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--space-3);">
+                <div class="form-group">
+                    <label class="form-label" for="cmodel-exploit-th">Exploit Threshold</label>
+                    <input type="number" id="cmodel-exploit-th" class="form-input" value="0.50" min="0" max="1" step="0.05">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="cmodel-misalign-th">Misalign Threshold</label>
+                    <input type="number" id="cmodel-misalign-th" class="form-input" value="0.65" min="0" max="1" step="0.05">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="cmodel-threat-th">Threat Threshold</label>
+                    <input type="number" id="cmodel-threat-th" class="form-input" value="0.50" min="0" max="1" step="0.05">
+                </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--space-3);">
+                <div class="form-group">
+                    <label class="form-label" for="cmodel-price">Input Price ($/1M)</label>
+                    <input type="number" id="cmodel-price" class="form-input" placeholder="0.042" min="0" step="0.001">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="cmodel-ctx">Max Context Tokens</label>
+                    <input type="number" id="cmodel-ctx" class="form-input" placeholder="64000" min="1">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="cmodel-state-format">State Format</label>
+                    <select id="cmodel-state-format" class="form-select">
+                        <option value="canonical_text">canonical_text</option>
+                        <option value="structured_json">structured_json</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group" style="display: flex; align-items: center; gap: var(--space-2);">
+                <input type="checkbox" id="cmodel-enabled" checked>
+                <label for="cmodel-enabled" class="text-sm">Enabled (visible in Dashboard Model Adapter dropdown)</label>
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: var(--space-3); margin-top: var(--space-4);">
+                <button class="btn btn-secondary" onclick="closeCloudModelModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="submitCloudModelForm()">Save Model</button>
             </div>
         </div>
     </div>

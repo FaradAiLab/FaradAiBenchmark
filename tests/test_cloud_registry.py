@@ -14,10 +14,15 @@ from adapters.cloud_registry import (
     CloudModelSpec,
     CloudProviderSpec,
     ProviderDialect,
+    delete_cloud_model,
+    delete_cloud_provider,
+    ensure_run_history_schema,
     export_cloud_config,
     get_cloud_model,
+    get_cloud_provider,
     import_cloud_config,
     init_cloud_registry,
+    is_api_key_configured,
     list_cloud_models,
     list_cloud_providers,
     resolve_adapter,
@@ -167,3 +172,113 @@ def test_default_seed_yaml_imports_cleanly(temp_db: Path):
     jev = get_cloud_model("or-jev-1.14", temp_db)
     assert jev is not None
     assert jev.remote_model_slug == "typesafe/jev-1.14"
+
+
+def test_lowercase_id_normalization_prevents_duplicate_pks(temp_db: Path):
+    p1 = CloudProviderSpec(
+        provider_id="OpenRouter",
+        display_name="OpenRouter",
+        dialect=ProviderDialect.OPENROUTER_DECISIONS,
+        base_url="https://openrouter.ai",
+        endpoint_path="/api/alpha/decisions",
+        api_key_env="OPENROUTER_API_KEY",
+    )
+    save_cloud_provider(p1, temp_db)
+    assert get_cloud_provider("openrouter", temp_db) is not None
+
+    m1 = CloudModelSpec(
+        model_id="OR-Jev-1.14",
+        provider_id="OPENROUTER",
+        remote_model_slug="typesafe/jev-1.14",
+    )
+    m2 = CloudModelSpec(
+        model_id="or-jev-1.14",
+        provider_id="openrouter",
+        remote_model_slug="typesafe/jev-1.14-updated",
+    )
+    save_cloud_model(m1, temp_db)
+    save_cloud_model(m2, temp_db)
+
+    models = list_cloud_models(temp_db)
+    assert len(models) == 1
+    assert models[0].model_id == "or-jev-1.14"
+    assert models[0].remote_model_slug == "typesafe/jev-1.14-updated"
+
+
+@pytest.mark.parametrize("reserved_id", ["laya-mlx", "MOCK", "kev-0.8b", "ollama-d1"])
+def test_cloud_model_rejects_static_adapter_collision(reserved_id: str):
+    with pytest.raises(ValueError, match="collides with a reserved local adapter name"):
+        CloudModelSpec(
+            model_id=reserved_id,
+            provider_id="openrouter",
+            remote_model_slug="typesafe/jev-1.14",
+        )
+
+
+@pytest.mark.parametrize(
+    "bad_url",
+    [
+        "https://openrouter.ai?api_key=sk-123",
+        "https://user:secret@openrouter.ai",
+        "https://openrouter.ai#frag",
+    ],
+)
+def test_provider_rejects_query_string_and_embedded_credentials(bad_url: str):
+    with pytest.raises(ValueError):
+        CloudProviderSpec(
+            provider_id="bad-url",
+            display_name="Bad URL",
+            dialect=ProviderDialect.OPENROUTER_DECISIONS,
+            base_url=bad_url,
+            endpoint_path="/api/alpha/decisions",
+            api_key_env="OPENROUTER_API_KEY",
+        )
+
+
+def test_delete_provider_fk_guard_and_model_delete(temp_db: Path):
+    prov = CloudProviderSpec(
+        provider_id="openrouter",
+        display_name="OpenRouter",
+        dialect=ProviderDialect.OPENROUTER_DECISIONS,
+        base_url="https://openrouter.ai",
+        endpoint_path="/api/alpha/decisions",
+        api_key_env="OPENROUTER_API_KEY",
+    )
+    model = CloudModelSpec(
+        model_id="or-jev-1.14",
+        provider_id="openrouter",
+        remote_model_slug="typesafe/jev-1.14",
+    )
+    save_cloud_provider(prov, temp_db)
+    save_cloud_model(model, temp_db)
+
+    with pytest.raises(ValueError, match="still reference it"):
+        delete_cloud_provider("openrouter", temp_db)
+
+    assert delete_cloud_model("OR-Jev-1.14", temp_db) is True
+    assert delete_cloud_model("or-jev-1.14", temp_db) is False
+    assert delete_cloud_provider("openrouter", temp_db) is True
+    assert delete_cloud_provider("openrouter", temp_db) is False
+
+
+def test_is_api_key_configured_reads_env_and_dotenv(tmp_path: Path, monkeypatch):
+    env_file = tmp_path / ".env"
+    env_file.write_text("TEST_DOTENV_KEY=super-secret-value\nEMPTY_KEY=\n", encoding="utf-8")
+    monkeypatch.delenv("TEST_DOTENV_KEY", raising=False)
+    monkeypatch.delenv("EMPTY_KEY", raising=False)
+    monkeypatch.setenv("TEST_PROC_KEY", "proc-secret")
+
+    assert is_api_key_configured("TEST_PROC_KEY", env_file=env_file) is True
+    assert is_api_key_configured("TEST_DOTENV_KEY", env_file=env_file) is True
+    assert is_api_key_configured("EMPTY_KEY", env_file=env_file) is False
+    assert is_api_key_configured("MISSING_KEY", env_file=env_file) is False
+
+
+def test_ensure_run_history_schema_includes_parity_columns(tmp_path: Path):
+    con = duckdb.connect(str(tmp_path / "parity.duckdb"))
+    try:
+        ensure_run_history_schema(con)
+        cols = {r[0] for r in con.execute("DESCRIBE run_history").fetchall()}
+        assert {"tier_scope", "enable_l1", "limit_cases"}.issubset(cols)
+    finally:
+        con.close()

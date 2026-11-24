@@ -14,12 +14,26 @@ const state = {
     runs: [],
     reconnectAttempts: 0,
     maxReconnect: 10,
-    matrix: {
-        templates: [],
-        activeTemplateId: 'exp_smoke_dual_track',
-        activeTemplate: null,
-        isRunning: false,
-        modelStatuses: {},
+    modelsAdmin: {
+        providers: [],
+        cloudModels: [],
+    },
+    history: {
+        page: 1,
+        limit: 25,
+        total: 0,
+        totalPages: 1,
+        dataset: '',
+        model: '',
+        status: 'all',
+        items: [],
+        selectedRunIds: new Set(),
+        filterDebounceTimer: null,
+    },
+    reports: {
+        list: [],
+        activeReportId: null,
+        activeReport: null,
     },
     testCases: {
         page: 1,
@@ -97,33 +111,14 @@ function handleWSMessage(msg) {
             updateProgress(msg);
             break;
         case 'run_started':
-            showToast(`Benchmark başlatıldı: ${msg.total_cases} test`, 'info');
+            showToast(`Benchmark started: ${msg.total_cases} cases`, 'info');
             resetLiveMetrics();
             break;
         case 'run_completed':
             handleRunCompleted(msg);
             break;
-        case 'matrix_started':
-            handleMatrixStarted(msg);
-            break;
-        case 'matrix_model_started':
-            handleMatrixModelStarted(msg);
-            break;
-        case 'matrix_model_completed':
-            handleMatrixModelCompleted(msg);
-            break;
-        case 'matrix_model_error':
-            handleMatrixModelError(msg);
-            break;
-        case 'matrix_completed':
-            handleMatrixCompleted(msg);
-            break;
-        case 'matrix_error':
-            showToast(`Matris Hatası: ${msg.error}`, 'error');
-            resetMatrixRunState();
-            break;
         case 'error':
-            showToast(`Hata: ${msg.message}`, 'error');
+            showToast(`Error: ${msg.message}`, 'error');
             resetProgress();
             break;
         case 'pong':
@@ -223,7 +218,7 @@ function resetLiveMetrics() {
 }
 
 function handleRunCompleted(data) {
-    showToast(`✅ Benchmark tamamlandı! F1: ${data.f1}% — ${data.duration_secs}s`, 'success');
+    showToast(`✅ Benchmark completed! F1: ${data.f1}% — ${data.duration_secs}s`, 'success');
 
     // Update final metrics
     updateMetric('accuracy', data.accuracy, '%');
@@ -307,7 +302,7 @@ async function startBenchmark() {
     const modelSelect = $('#model-select');
 
     if (!datasetSelect.value || !modelSelect.value) {
-        showToast('Dataset ve model seçiniz', 'error');
+        showToast('Please select a dataset and model', 'error');
         return;
     }
 
@@ -324,7 +319,7 @@ async function startBenchmark() {
 
     const btn = $('#btn-start');
     btn.disabled = true;
-    btn.innerHTML = '<span class="spinner">⏳</span> Çalışıyor...';
+    btn.innerHTML = '<span class="spinner">⏳</span> Running...';
 
     const actions = $('#progress-complete-actions');
     if (actions) actions.style.display = 'none';
@@ -347,16 +342,16 @@ async function startBenchmark() {
         const data = await res.json();
 
         if (data.error) {
-            showToast(`Hata: ${data.error}`, 'error');
+            showToast(`Error: ${data.error}`, 'error');
             btn.disabled = false;
             btn.innerHTML = '🚀 Start Benchmark';
             return;
         }
 
         state.activeRunId = data.run_id;
-        showToast(`Run başlatıldı: ${data.run_id}`, 'info');
+        showToast(`Run started: ${data.run_id}`, 'info');
     } catch (e) {
-        showToast(`Bağlantı hatası: ${e.message}`, 'error');
+        showToast(`Connection error: ${e.message}`, 'error');
         btn.disabled = false;
         btn.innerHTML = '🚀 Start Benchmark';
     }
@@ -372,17 +367,17 @@ async function viewRunDetail(runId) {
         }
         renderRunDetailModal(data);
     } catch (e) {
-        showToast(`Detay yüklenemedi: ${e.message}`, 'error');
+        showToast(`Failed to load details: ${e.message}`, 'error');
     }
 }
 
 async function deleteRun(runId, event) {
     event.stopPropagation();
-    if (!confirm(`"${runId}" kaydını silmek istediğinizden emin misiniz?`)) return;
+    if (!confirm(`Are you sure you want to delete "${runId}"?`)) return;
 
     try {
         await fetch(`/api/runs/${runId}`, { method: 'DELETE' });
-        showToast(`${runId} silindi`, 'info');
+        showToast(`${runId} deleted`, 'info');
         loadRuns();
     } catch (e) {
         showToast(`Silinemedi: ${e.message}`, 'error');
@@ -415,13 +410,13 @@ function updateTierDescription() {
 
     if (tier === 'static') {
         const cnt = ds ? (ds.static_rows || 0).toLocaleString() : '1,000';
-        descEl.textContent = `⚡ Statik Kapsam: Yalnızca mikrosaniyelik regex/DLP ile tespit edilebilir kurallar (${cnt} vaka - STATIC_CAPABLE).`;
+        descEl.textContent = `⚡ Static Scope: Rules detectable solely via microsecond regex/DLP (${cnt} cases - STATIC_CAPABLE).`;
     } else if (tier === 'semantic') {
         const cnt = ds ? (ds.semantic_rows || 0).toLocaleString() : '1,000';
-        descEl.textContent = `🧠 Semantik Kapsam: L2 derin anlamsal analiz gerektiren karmaşık senaryolar (${cnt} vaka - SEMANTIC_REQUIRED).`;
+        descEl.textContent = `🧠 Semantic Scope: Complex scenarios requiring L2 deep semantic analysis (${cnt} cases - SEMANTIC_REQUIRED).`;
     } else {
         const cnt = ds ? (ds.rows || 0).toLocaleString() : '2,000';
-        descEl.textContent = `🌐 Tümü: Statik kural ve semantik test vakalarının tamamı (${cnt} vaka).`;
+        descEl.textContent = `🌐 All: Complete set of static rule and semantic test cases (${cnt} cases).`;
     }
 }
 
@@ -478,14 +473,14 @@ function onModelChanged() {
 function renderDatasetSelect() {
     const select = $('#dataset-select');
     if (!select) return;
-    select.innerHTML = '<option value="">Dataset seçin...</option>';
+    select.innerHTML = '<option value="">Select dataset...</option>';
 
     const coreDatasets = state.datasets.filter(d => d.is_core);
     const domainDatasets = state.datasets.filter(d => !d.is_core);
 
     if (coreDatasets.length > 0) {
         const coreGroup = document.createElement('optgroup');
-        coreGroup.label = '🌟 Ana Benchmark Veri Kümeleri';
+        coreGroup.label = '🌟 Core Benchmark Datasets';
         coreDatasets.forEach(ds => {
             const opt = document.createElement('option');
             opt.value = ds.id;
@@ -497,7 +492,7 @@ function renderDatasetSelect() {
 
     if (domainDatasets.length > 0) {
         const domainGroup = document.createElement('optgroup');
-        domainGroup.label = '🔬 Özel Tehdit & Zafiyet Kümeleri';
+        domainGroup.label = '🔬 Specialized Threat & Vulnerability Suites';
         domainDatasets.forEach(ds => {
             const opt = document.createElement('option');
             opt.value = ds.id;
@@ -513,7 +508,7 @@ function renderDatasetSelect() {
         select.value = coreDs.id;
         const hint = $('#dataset-hint');
         if (hint) {
-            hint.textContent = `${coreDs.rows.toLocaleString()} satır · ${coreDs.size_kb} KB · ${coreDs.filename}`;
+            hint.textContent = `${coreDs.rows.toLocaleString()} rows · ${coreDs.size_kb} KB · ${coreDs.filename}`;
         }
         updateTierCounts(coreDs);
     }
@@ -542,48 +537,45 @@ function renderModelSelect() {
 
 function renderRunsTable() {
     const tbody = $('#runs-tbody');
-    const historyTbody = $('#history-tbody');
+    if (!tbody) return;
+    if (state.runs.length === 0) {
+        tbody.innerHTML = `
+            <tr><td colspan="9" style="text-align:center; padding: 40px; color: var(--text-tertiary);">
+                No benchmarks have been run yet
+            </td></tr>`;
+        return;
+    }
 
-    [tbody, historyTbody].forEach(el => {
-        if (!el) return;
-        if (state.runs.length === 0) {
-            el.innerHTML = `
-                <tr><td colspan="9" style="text-align:center; padding: 40px; color: var(--text-tertiary);">
-                    Henüz benchmark çalıştırılmamış
-                </td></tr>`;
-            return;
-        }
-
-        el.innerHTML = state.runs.map(r => {
-            const statusBadge = getStatusBadge(r.status);
-            const startedAt = r.started_at ? new Date(r.started_at).toLocaleString('tr-TR') : '—';
-            return `
-                <tr onclick="viewRunDetail('${r.run_id}')">
-                    <td><span class="mono text-sm">${r.run_id}</span></td>
-                    <td>${r.dataset_name}</td>
-                    <td>${r.model_name}</td>
-                    <td class="mono">${r.total_cases || '—'}</td>
-                    <td class="mono ${getMetricClass(r.accuracy)}">${r.accuracy ? r.accuracy + '%' : '—'}</td>
-                    <td class="mono ${getMetricClass(r.f1)}">${r.f1 ? r.f1 + '%' : '—'}</td>
-                    <td class="mono">${r.avg_latency_ms ? r.avg_latency_ms + 'ms' : '—'}</td>
-                    <td>${statusBadge}</td>
-                    <td>
-                        <span class="text-sm text-muted">${startedAt}</span>
-                        <button class="btn btn-danger btn-sm" onclick="deleteRun('${r.run_id}', event)" title="Sil" style="margin-left:8px;">✕</button>
-                    </td>
-                </tr>`;
-        }).join('');
-    });
+    tbody.innerHTML = state.runs.slice(0, 15).map(r => {
+        const statusBadge = getStatusBadge(r.status);
+        const startedAt = r.started_at ? new Date(r.started_at).toLocaleString('en-US') : '—';
+        return `
+            <tr onclick="viewRunDetail('${r.run_id}')">
+                <td><span class="mono text-sm">${escapeHtml(r.run_id)}</span></td>
+                <td>${escapeHtml(r.dataset_name)}</td>
+                <td>${escapeHtml(r.model_name)}</td>
+                <td class="mono">${r.total_cases || '—'}</td>
+                <td class="mono ${getMetricClass(r.accuracy)}">${r.accuracy ? r.accuracy + '%' : '—'}</td>
+                <td class="mono ${getMetricClass(r.f1)}">${r.f1 ? r.f1 + '%' : '—'}</td>
+                <td class="mono">${r.avg_latency_ms ? r.avg_latency_ms + 'ms' : '—'}</td>
+                <td>${statusBadge}</td>
+                <td>
+                    <span class="text-sm text-muted">${startedAt}</span>
+                    <button class="btn btn-danger btn-sm" onclick="deleteRun('${r.run_id}', event)" title="Delete" style="margin-left:8px;">✕</button>
+                </td>
+            </tr>`;
+    }).join('');
 }
 
 function getStatusBadge(status) {
     const map = {
         completed: '<span class="badge badge-completed">✓ Completed</span>',
+        budget_stopped: '<span class="badge badge-budget">💰 Budget Cap</span>',
         running: '<span class="badge badge-running">⟳ Running</span>',
         error: '<span class="badge badge-error">✕ Error</span>',
         pending: '<span class="badge badge-pending">◌ Pending</span>',
     };
-    return map[status] || `<span class="badge badge-pending">${status}</span>`;
+    return map[status] || `<span class="badge badge-pending">${escapeHtml(status || 'unknown')}</span>`;
 }
 
 function getMetricClass(value) {
@@ -715,17 +707,17 @@ function renderFilteredCases() {
     if (!caseTbody) return;
 
     if (filtered.length === 0) {
-        caseTbody.innerHTML = `<tr><td colspan="8" class="empty-state" style="padding: var(--space-6); text-align: center; color: var(--text-tertiary);">Kriterlere uygun test case bulunamadı.</td></tr>`;
+        caseTbody.innerHTML = `<tr><td colspan="8" class="empty-state" style="padding: var(--space-6); text-align: center; color: var(--text-tertiary);">No test cases match the current criteria.</td></tr>`;
         return;
     }
 
     caseTbody.innerHTML = filtered.map(c => `
-        <tr class="case-row" onclick="showCaseDetail(${c._originalIdx})" title="Tıkla: payload detayını gör">
+        <tr class="case-row" onclick="showCaseDetail(${c._originalIdx})" title="Click to view payload details">
             <td class="case-result-icon ${c.correct ? 'case-correct' : 'case-incorrect'}">${c.correct ? '✓' : '✕'}</td>
             <td class="mono font-semibold">${c.id}</td>
             <td><span class="badge-domain">${c.domain}</span></td>
             <td class="mono text-sm">${c.tool_name}</td>
-            <td>${c.is_malicious ? '🔴 Zararlı' : '🟢 Meşru'}</td>
+            <td>${c.is_malicious ? '🔴 Malicious' : '🟢 Benign'}</td>
             <td>${c.predicted_blocked ? '🛑 Blocked' : '✅ Allowed'}${c.decided_by ? ` <span style="font-size:0.75rem; font-weight:600; padding:1px 5px; border-radius:4px; background:${c.decided_by==='L1'?'rgba(245,158,11,0.15)':'rgba(59,130,246,0.15)'}; color:${c.decided_by==='L1'?'#f59e0b':'#3b82f6'}">${c.decided_by}</span>` : ''}</td>
             <td class="mono">${c.latency_ms}ms</td>
             <td class="case-expand-icon">▸</td>
@@ -752,7 +744,7 @@ function copyPayload(btn) {
     const text = codeEl.innerText;
     navigator.clipboard.writeText(text).then(() => {
         const orig = btn.innerHTML;
-        btn.innerHTML = '✅ Kopyalandı!';
+        btn.innerHTML = '✅ Copied!';
         btn.classList.add('copied');
         setTimeout(() => {
             btn.innerHTML = orig;
@@ -829,7 +821,7 @@ function showCaseDetail(idx) {
         <div class="case-detail-verdict">
             <div class="verdict-box ${c.is_malicious ? 'verdict-malicious' : 'verdict-benign'}">
                 <span class="verdict-label">Expected</span>
-                <span class="verdict-value">${c.is_malicious ? '🔴 Zararlı (Block)' : '🟢 Meşru (Allow)'}</span>
+                <span class="verdict-value">${c.is_malicious ? '🔴 Malicious (Block)' : '🟢 Benign (Allow)'}</span>
             </div>
             <div class="verdict-arrow">${c.correct ? '✅' : '❌'}</div>
             <div class="verdict-box ${c.predicted_blocked ? 'verdict-blocked' : 'verdict-allowed'}">
@@ -847,7 +839,7 @@ function showCaseDetail(idx) {
         <div class="case-detail-section">
             <div class="flex items-center justify-between" style="margin-bottom: var(--space-2);">
                 <div class="case-section-title" style="margin-bottom: 0;">📦 Tool Arguments (Payload)</div>
-                <button class="copy-payload-btn" onclick="copyPayload(this)" title="Payload'ı panoya kopyala">📋 Kopyala</button>
+                <button class="copy-payload-btn" onclick="copyPayload(this)" title="Copy payload to clipboard">📋 Copy</button>
             </div>
             <pre class="case-payload-box"><code>${syntaxHighlight(c.tool_arguments || '{}')}</code></pre>
         </div>
@@ -906,24 +898,24 @@ function populateCompareSelects() {
 
     const completed = (state.runs || []).filter(r => r.status === 'completed');
     if (completed.length === 0) {
-        selA.innerHTML = '<option value="">Tamamlanmış koşum bulunamadı</option>';
-        selB.innerHTML = '<option value="">Tamamlanmış koşum bulunamadı</option>';
+        selA.innerHTML = '<option value="">No completed runs found</option>';
+        selB.innerHTML = '<option value="">No completed runs found</option>';
         return;
     }
 
     // Group runs by dataset
     const datasets = {};
     completed.forEach(r => {
-        const ds = r.dataset_name || 'Diğer';
+        const ds = r.dataset_name || 'Other';
         if (!datasets[ds]) datasets[ds] = [];
         datasets[ds].push(r);
     });
 
-    let htmlA = '<option value="">Run A seçin (Baseline)...</option>';
+    let htmlA = '<option value="">Select Run A (Baseline)...</option>';
     for (const [dsName, runs] of Object.entries(datasets)) {
-        htmlA += `<optgroup label="Dataset: ${dsName} (${runs.length} koşum)">`;
+        htmlA += `<optgroup label="Dataset: ${dsName} (${runs.length} runs)">`;
         runs.forEach(r => {
-            const dt = r.started_at ? new Date(r.started_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : '';
+            const dt = r.started_at ? new Date(r.started_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '';
             htmlA += `<option value="${r.run_id}">${r.model_name} (${r.run_id}, F1: ${r.f1 || 0}%, ${dt})</option>`;
         });
         htmlA += `</optgroup>`;
@@ -957,7 +949,7 @@ function onCompareRunAChanged() {
 
     const runAId = selA.value;
     if (!runAId) {
-        selB.innerHTML = '<option value="">Önce Run A seçin...</option>';
+        selB.innerHTML = '<option value="">Select Run A first...</option>';
         selB.disabled = true;
         if (btn) btn.disabled = true;
         return;
@@ -976,7 +968,7 @@ function onCompareRunAChanged() {
     );
 
     if (candidates.length === 0) {
-        selB.innerHTML = `<option value="">Bu dataset (${targetDataset}) için karşılaştırılacak başka model yok</option>`;
+        selB.innerHTML = `<option value="">No other models to compare for this dataset (${targetDataset})</option>`;
         selB.disabled = true;
         if (btn) btn.disabled = true;
         return;
@@ -986,7 +978,7 @@ function onCompareRunAChanged() {
     if (btn) btn.disabled = false;
 
     selB.innerHTML = candidates.map(r => {
-        const dt = r.started_at ? new Date(r.started_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : '';
+        const dt = r.started_at ? new Date(r.started_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '';
         return `<option value="${r.run_id}">${r.model_name} (${r.run_id}, F1: ${r.f1 || 0}%, ${dt})</option>`;
     }).join('');
 
@@ -1000,14 +992,14 @@ async function executeComparison() {
     const runB = selB ? selB.value : '';
 
     if (!runA || !runB) {
-        showToast('Lütfen karşılaştırmak için iki koşum seçin.', 'warn');
+        showToast('Please select two runs to compare.', 'warn');
         return;
     }
 
     const btn = $('#btn-compare-execute');
     if (btn) {
         btn.disabled = true;
-        btn.innerHTML = '⏳ Hesaplanıyor...';
+        btn.innerHTML = '⏳ Calculating...';
     }
 
     try {
@@ -1021,13 +1013,13 @@ async function executeComparison() {
         state.compareData = data;
         state.compareFilter = 'all';
         renderComparisonResults(data);
-        showToast(`Karşılaştırma tamamlandı: ${data.agreement_stats.discrepant_verdicts} zıt karar bulundu.`, 'info');
+        showToast(`Comparison complete: ${data.agreement_stats.discrepant_verdicts} divergent verdicts found.`, 'info');
     } catch (e) {
-        showToast(`Karşılaştırma hatası: ${e.message}`, 'error');
+        showToast(`Comparison error: ${e.message}`, 'error');
     } finally {
         if (btn) {
             btn.disabled = false;
-            btn.innerHTML = '⚡ Karşılaştır';
+            btn.innerHTML = '⚡ Compare';
         }
     }
 }
@@ -1046,7 +1038,7 @@ function renderComparisonResults(data) {
     setText('#compare-run-a-id', rA.run_id);
     setText('#compare-model-b-title', rB.model_name);
     setText('#compare-run-b-id', rB.run_id);
-    setText('#compare-dataset-badge', `Dataset: ${rA.dataset_name} (${ast.total_common} ortak vaka)`);
+    setText('#compare-dataset-badge', `Dataset: ${rA.dataset_name} (${ast.total_common} common cases)`);
 
     const thA = $('#th-model-a');
     const thB = $('#th-model-b');
@@ -1061,12 +1053,12 @@ function renderComparisonResults(data) {
 
     // Macro metric cards
     const metricsHtml = [
-        { label: 'Mutabakat Oranı', value: ast.agreement_rate_pct, suffix: '%', cls: ast.agreement_rate_pct >= 80 ? 'good' : 'warn' },
-        { label: 'Ayrışan Kararlar', value: ast.discrepant_verdicts, suffix: ' vaka', cls: ast.discrepant_verdicts === 0 ? 'good' : 'info' },
-        { label: 'F1 Skoru Farkı (B - A)', value: `${f1DeltaPrefix}${f1Delta}`, suffix: '%', cls: f1Delta >= 0 ? 'good' : 'bad' },
-        { label: 'Ort. Gecikme Farkı (B - A)', value: `${latDeltaPrefix}${latDelta}`, suffix: 'ms', cls: latDelta <= 0 ? 'good' : 'warn' },
-        { label: 'A Kaçırdı ➔ B Yakaladı', value: ast.a_missed_b_caught, suffix: ' vaka', cls: 'good' },
-        { label: 'B Kaçırdı ➔ A Yakaladı', value: ast.b_missed_a_caught, suffix: ' vaka', cls: 'bad' },
+        { label: 'Agreement Rate', value: ast.agreement_rate_pct, suffix: '%', cls: ast.agreement_rate_pct >= 80 ? 'good' : 'warn' },
+        { label: 'Discrepant Verdicts', value: ast.discrepant_verdicts, suffix: ' cases', cls: ast.discrepant_verdicts === 0 ? 'good' : 'info' },
+        { label: 'F1 Score Delta (B - A)', value: `${f1DeltaPrefix}${f1Delta}`, suffix: '%', cls: f1Delta >= 0 ? 'good' : 'bad' },
+        { label: 'Avg. Latency Delta (B - A)', value: `${latDeltaPrefix}${latDelta}`, suffix: 'ms', cls: latDelta <= 0 ? 'good' : 'warn' },
+        { label: 'A Missed ➔ B Caught', value: ast.a_missed_b_caught, suffix: ' cases', cls: 'good' },
+        { label: 'B Missed ➔ A Caught', value: ast.b_missed_a_caught, suffix: ' cases', cls: 'bad' },
     ].map(m => `
         <div class="metric-card">
             <div class="metric-label">${m.label}</div>
@@ -1093,7 +1085,7 @@ function renderDiscrepancyRows(discrepancies) {
 
     if (discrepancies.length === 0) {
         tbody.innerHTML = `<tr><td colspan="8" class="empty-state" style="padding: 30px; text-align: center; color: var(--text-tertiary);">
-            Bu filtre için herhangi bir uyuşmazlık bulunamadı. İki model bu vakalarda tamamen mutabık!
+            No discrepancies found for this filter. Both models agree completely on these cases!
         </td></tr>`;
         return;
     }
@@ -1109,11 +1101,11 @@ function renderDiscrepancyRows(discrepancies) {
         const latClass = latDiff > 0 ? 'text-amber-400' : 'text-emerald-400';
 
         return `
-            <tr class="case-row" onclick="showDiscrepancyDetail(${idx})" title="Tıkla: detaylı karşılaştırmayı ve payload'u gör">
+            <tr class="case-row" onclick="showDiscrepancyDetail(${idx})" title="Click to view detailed comparison and payload">
                 <td class="mono font-semibold">${d.case_id}</td>
                 <td><span class="badge-domain">${d.domain}</span></td>
                 <td><span class="mono text-xs" style="color: #818cf8;">${d.analysis_tier}</span></td>
-                <td>${d.is_malicious ? '🔴 Zararlı' : '🟢 Meşru'}</td>
+                <td>${d.is_malicious ? '🔴 Malicious' : '🟢 Benign'}</td>
                 <td>
                     <span class="${aClass}" style="font-weight: 600;">${aBlocked ? '🛑 Blocked' : '✅ Allowed'}</span>
                     <span class="mono text-xs" style="opacity: 0.7;">(${d.run_a.decided_by})</span>
@@ -1145,7 +1137,7 @@ async function filterDiscrepancies(filterType) {
         const data = await res.json();
         renderDiscrepancyRows(data.discrepancies || []);
     } catch (e) {
-        showToast(`Filtreleme hatası: ${e.message}`, 'error');
+        showToast(`Filter error: ${e.message}`, 'error');
     }
 }
 
@@ -1191,13 +1183,13 @@ function showDiscrepancyDetail(idx) {
             </div>
             <div class="case-meta-chip">
                 <span class="case-meta-label">Expected</span>
-                <span class="case-meta-value font-semibold">${d.is_malicious ? '🔴 Zararlı (Block)' : '🟢 Meşru (Allow)'}</span>
+                <span class="case-meta-value font-semibold">${d.is_malicious ? '🔴 Malicious (Block)' : '🟢 Benign (Allow)'}</span>
             </div>
         </div>
 
         <!-- Side-by-Side Model Comparison -->
         <div style="margin-top: var(--space-4); margin-bottom: var(--space-4);">
-            <div class="case-section-title" style="margin-bottom: var(--space-2);">⚔️ Model Karşılaştırması</div>
+            <div class="case-section-title" style="margin-bottom: var(--space-2);">⚔️ Model Comparison</div>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3);">
                 <!-- Model A Card -->
                 <div style="padding: 12px; border-radius: var(--radius-md); background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.25);">
@@ -1206,8 +1198,8 @@ function showDiscrepancyDetail(idx) {
                         ${d.run_a.predicted_blocked ? '🛑 BLOCKED' : '✅ ALLOWED'}
                         <span>${d.run_a.correct ? '✓' : '✕'}</span>
                     </div>
-                    <div class="text-xs mono text-muted">Motor: ${d.run_a.decided_by}</div>
-                    <div class="text-xs mono text-muted">Gecikme: ${d.run_a.latency_ms}ms</div>
+                    <div class="text-xs mono text-muted">Engine: ${d.run_a.decided_by}</div>
+                    <div class="text-xs mono text-muted">Latency: ${d.run_a.latency_ms}ms</div>
                     ${d.run_a.verdict_detail ? `<div class="text-xs mono" style="margin-top: 4px; color: var(--text-secondary);">${escapeHtml(d.run_a.verdict_detail)}</div>` : ''}
                 </div>
 
@@ -1218,8 +1210,8 @@ function showDiscrepancyDetail(idx) {
                         ${d.run_b.predicted_blocked ? '🛑 BLOCKED' : '✅ ALLOWED'}
                         <span>${d.run_b.correct ? '✓' : '✕'}</span>
                     </div>
-                    <div class="text-xs mono text-muted">Motor: ${d.run_b.decided_by}</div>
-                    <div class="text-xs mono text-muted">Gecikme: ${d.run_b.latency_ms}ms</div>
+                    <div class="text-xs mono text-muted">Engine: ${d.run_b.decided_by}</div>
+                    <div class="text-xs mono text-muted">Latency: ${d.run_b.latency_ms}ms</div>
                     ${d.run_b.verdict_detail ? `<div class="text-xs mono" style="margin-top: 4px; color: var(--text-secondary);">${escapeHtml(d.run_b.verdict_detail)}</div>` : ''}
                 </div>
             </div>
@@ -1234,7 +1226,7 @@ function showDiscrepancyDetail(idx) {
         <div class="case-detail-section">
             <div class="flex items-center justify-between" style="margin-bottom: var(--space-2);">
                 <div class="case-section-title" style="margin-bottom: 0;">📦 Tool Arguments (Payload)</div>
-                <button class="copy-payload-btn" onclick="copyPayload(this)" title="Payload'ı panoya kopyala">📋 Kopyala</button>
+                <button class="copy-payload-btn" onclick="copyPayload(this)" title="Copy payload to clipboard">📋 Copy</button>
             </div>
             <pre class="case-payload-box"><code>${syntaxHighlight(d.tool_arguments || '{}')}</code></pre>
         </div>
@@ -1261,13 +1253,15 @@ function switchPage(page, updateHash = true) {
     activatePageUI(page);
 
     if (page === 'history') {
-        loadRuns();
+        loadHistoryPage();
+    } else if (page === 'models') {
+        loadModelsPage();
+    } else if (page === 'reports') {
+        loadReportsPage();
     } else if (page === 'compare') {
         loadRuns().then(() => populateCompareSelects());
     } else if (page === 'test-cases') {
         initTestCasesPage();
-    } else if (page === 'matrix') {
-        loadExperimentTemplates();
     }
 
     if (updateHash) {
@@ -1976,13 +1970,16 @@ async function handleHashNavigation() {
                 closeCaseDetail(false);
             }
         } else {
-            activatePageUI(targetPage);
-            if (targetPage === 'history') {
-                loadRuns();
-            } else if (targetPage === 'compare') {
+            const normalizedPage = targetPage === 'matrix' ? 'reports' : targetPage;
+            activatePageUI(normalizedPage);
+            if (normalizedPage === 'history') {
+                loadHistoryPage();
+            } else if (normalizedPage === 'models') {
+                loadModelsPage();
+            } else if (normalizedPage === 'reports') {
+                loadReportsPage();
+            } else if (normalizedPage === 'compare') {
                 loadRuns().then(() => populateCompareSelects());
-            } else if (targetPage === 'matrix') {
-                loadExperimentTemplates();
             }
             closeCaseDetail(false);
         }
@@ -2079,7 +2076,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const ds = state.datasets.find(d => d.id === datasetSelect.value);
             const hint = $('#dataset-hint');
             if (hint && ds) {
-                hint.textContent = `${ds.rows.toLocaleString()} satır · ${ds.size_kb} KB · ${ds.filename}`;
+                hint.textContent = `${ds.rows.toLocaleString()} rows · ${ds.size_kb} KB · ${ds.filename}`;
             } else if (hint) {
                 hint.textContent = '';
             }
@@ -2131,15 +2128,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 30000);
 });
 
-// ─── Declarative Matrix Studio (ADR 0010) ──────────────────────────────────
+// ─── Runtime Tier Badges ────────────────────────────────────────────────────
 
 function getRuntimeTierBadge(tier) {
     const t = (tier || 'UNKNOWN').toUpperCase();
+    if (t.includes('CLOUD')) {
+        return '<span class="badge" style="background: rgba(6, 182, 212, 0.16); color: #22d3ee; border: 1px solid rgba(6, 182, 212, 0.35);">[Cloud API]</span>';
+    }
     if (t.includes('MLX') || t.includes('METAL')) {
-        return '<span class="badge" style="background: rgba(147, 51, 234, 0.15); color: #c084fc; border: 1px solid rgba(147, 51, 234, 0.3);">[MLX-Native Metal]</span>';
+        return '<span class="badge" style="background: rgba(147, 51, 234, 0.15); color: #c084fc; border: 1px solid rgba(147, 51, 234, 0.3);">[MLX-Native]</span>';
     }
     if (t.includes('OLLAMA')) {
-        return '<span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3);">[Ollama-Daemon]</span>';
+        return '<span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3);">[Ollama]</span>';
     }
     if (t.includes('MPS')) {
         return '<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);">[PyTorch MPS]</span>';
@@ -2147,369 +2147,814 @@ function getRuntimeTierBadge(tier) {
     if (t.includes('STATIC') || t.includes('RULE')) {
         return '<span class="badge" style="background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3);">[L1 Static]</span>';
     }
-    return `<span class="badge badge-pending">[${escapeHtml(tier || 'Auto')}]</span>`;
+    return `<span class="badge badge-pending">[${escapeHtml(tier || 'Unknown')}]</span>`;
 }
 
-async function loadExperimentTemplates() {
+// ─── Models & Adapters Dashboard (ADR 0012) ─────────────────────────────────
+
+async function loadModelsPage() {
     try {
-        const res = await fetch('/api/experiments');
-        if (!res.ok) throw new Error('Failed to fetch experiment templates');
-        const templates = await res.json();
-        state.matrix.templates = templates;
+        const [provRes, cModelRes, allModelsRes] = await Promise.all([
+            fetch('/api/cloud-providers'),
+            fetch('/api/cloud-models'),
+            fetch('/api/models'),
+        ]);
+        state.modelsAdmin.providers = provRes.ok ? await provRes.json() : [];
+        state.modelsAdmin.cloudModels = cModelRes.ok ? await cModelRes.json() : [];
+        const allModels = allModelsRes.ok ? await allModelsRes.json() : [];
+        const localModels = allModels.filter(m => m.backend !== 'Cloud API');
 
-        const select = $('#matrix-template-select');
-        if (!select) return;
-
-        select.innerHTML = '';
-        if (templates.length === 0) {
-            select.innerHTML = '<option value="">Hiç şablon bulunamadı</option>';
-            return;
-        }
-
-        templates.forEach(t => {
-            const opt = document.createElement('option');
-            opt.value = t.template_id;
-            opt.textContent = `${t.name} (${t.template_id})`;
-            select.appendChild(opt);
-        });
-
-        // Default to exp_smoke_dual_track if present
-        const hasSmoke = templates.some(t => t.template_id === 'exp_smoke_dual_track');
-        if (hasSmoke && (!state.matrix.activeTemplateId || state.matrix.activeTemplateId === 'exp_smoke_dual_track')) {
-            state.matrix.activeTemplateId = 'exp_smoke_dual_track';
-            select.value = 'exp_smoke_dual_track';
-        } else if (templates.length > 0) {
-            state.matrix.activeTemplateId = select.value;
-        }
-
-        renderActiveMatrixTemplate();
+        renderCloudModelsTable();
+        renderCloudProvidersTable();
+        renderLocalModelsTable(localModels);
     } catch (e) {
-        console.error('[Matrix] Failed to load templates:', e);
-        showToast('Şablonlar yüklenemedi: ' + e.message, 'error');
+        console.error('Failed to load Models page:', e);
+        showToast('Failed to load models registry', 'error');
     }
 }
 
-function onMatrixTemplateChanged() {
-    const select = $('#matrix-template-select');
-    if (!select) return;
-    state.matrix.activeTemplateId = select.value;
-    state.matrix.modelStatuses = {};
-    renderActiveMatrixTemplate();
-}
-
-function renderActiveMatrixTemplate() {
-    const template = (state.matrix.templates || []).find(t => t.template_id === state.matrix.activeTemplateId);
-    state.matrix.activeTemplate = template;
-
-    const delBtn = $('#btn-delete-template');
-    if (delBtn) {
-        delBtn.style.display = (template && template.template_id !== 'exp_smoke_dual_track') ? 'inline-block' : 'none';
-    }
-
-    if (!template) {
-        setText('#matrix-tpl-name', 'Şablon bulunamadı');
-        setText('#matrix-tpl-id', '—');
-        setText('#matrix-tpl-desc', 'Lütfen geçerli bir test şablonu seçin.');
-        setText('#matrix-tpl-dataset', '—');
-        setText('#matrix-tpl-limit', '—');
-        setText('#matrix-model-count', '0 Model');
-        const tbody = $('#matrix-models-tbody');
-        if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Şablon seçiniz...</td></tr>';
-        return;
-    }
-
-    setText('#matrix-tpl-name', template.name);
-    setText('#matrix-tpl-id', template.template_id);
-    setText('#matrix-tpl-desc', template.description || 'Açıklama belirtilmemiş.');
-    setText('#matrix-tpl-dataset', template.dataset_path);
-    setText('#matrix-tpl-limit', template.limit_cases ? `${template.limit_cases.toLocaleString()} vaka` : 'Tüm vaka havuzu');
-    setText('#matrix-model-count', `${(template.models_config || []).length} Model`);
-
-    const tbody = $('#matrix-models-tbody');
+function renderCloudModelsTable() {
+    const tbody = $('#cloud-models-tbody');
+    const countEl = $('#cloud-models-count');
+    const list = state.modelsAdmin.cloudModels || [];
+    if (countEl) countEl.textContent = `${list.length} Model${list.length === 1 ? '' : 's'}`;
     if (!tbody) return;
 
-    if (!template.models_config || template.models_config.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Bu şablonda model yapılandırılmamış.</td></tr>';
+    if (list.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No cloud models registered yet. Click "Add Cloud Model" to register one.</td></tr>';
         return;
     }
 
-    tbody.innerHTML = template.models_config.map((m) => {
-        const modelId = m.model_id;
-        const tierBadge = getRuntimeTierBadge(m.runtime_tier);
-        const cascadeHtml = m.enable_l1_cascade
-            ? '<span class="badge" style="background: rgba(16, 185, 129, 0.1); color: #34d399;">⚡ L1 Fail-Fast Aktif</span>'
-            : '<span class="text-xs text-muted">Saf Model</span>';
-
-        const thresholdParts = [];
-        if (m.threat_threshold !== undefined && m.threat_threshold !== null) {
-            thresholdParts.push(`Threat: ${m.threat_threshold}`);
-        }
-        if (m.exploit_threshold !== undefined && m.exploit_threshold !== null) {
-            thresholdParts.push(`Exploit: ${m.exploit_threshold}`);
-        }
-        if (m.misalignment_threshold !== undefined && m.misalignment_threshold !== null) {
-            thresholdParts.push(`Misalign: ${m.misalignment_threshold}`);
-        }
-        const thresholdsHtml = thresholdParts.length > 0
-            ? `<span class="mono text-xs">${thresholdParts.join(', ')}</span>`
-            : '<span class="text-xs text-muted">—</span>';
-
-        const status = state.matrix.modelStatuses[modelId] || '<span class="badge badge-pending">Beklemede</span>';
+    tbody.innerHTML = list.map(m => {
+        const envBadge = m.api_key_configured
+            ? `<span class="badge badge-env-ok">✓ ${escapeHtml(m.api_key_env)}</span>`
+            : `<span class="badge badge-env-missing">✕ ${escapeHtml(m.api_key_env || 'Missing')}</span>`;
+        const statusBadge = m.enabled
+            ? '<span class="badge badge-completed">Enabled</span>'
+            : '<span class="badge badge-pending">Disabled</span>';
+        const priceTxt = m.input_price_per_1m_usd != null ? `$${Number(m.input_price_per_1m_usd).toFixed(4)}` : '—';
+        const thTxt = `${m.exploit_threshold} / ${m.misalignment_threshold} / ${m.threat_threshold}`;
 
         return `
-            <tr id="matrix-row-${escapeHtml(modelId)}">
+            <tr>
+                <td class="mono font-semibold">${escapeHtml(m.model_id)}</td>
                 <td>
-                    <div class="font-bold mono text-sm" style="color: var(--text-primary);">${escapeHtml(modelId)}</div>
+                    <div>${escapeHtml(m.provider_display_name || m.provider_id)}</div>
+                    <div class="text-xs text-muted mono">${escapeHtml(m.dialect)}</div>
                 </td>
-                <td>${tierBadge}</td>
-                <td>${cascadeHtml}</td>
-                <td>${thresholdsHtml}</td>
-                <td id="matrix-status-${escapeHtml(modelId)}">${status}</td>
-            </tr>
-        `;
+                <td class="mono text-sm">${escapeHtml(m.remote_model_slug)}</td>
+                <td class="mono text-xs">${thTxt}</td>
+                <td class="mono text-sm">${priceTxt}</td>
+                <td>${envBadge}</td>
+                <td>${statusBadge}</td>
+                <td style="text-align: right; white-space: nowrap;">
+                    <button class="btn btn-secondary btn-sm" onclick="toggleCloudModelEnabled('${escapeHtml(m.model_id)}')">${m.enabled ? 'Disable' : 'Enable'}</button>
+                    <button class="btn btn-secondary btn-sm" onclick="openCloudModelModal('${escapeHtml(m.model_id)}')">Edit</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteCloudModelUI('${escapeHtml(m.model_id)}')" title="Delete">🗑️</button>
+                </td>
+            </tr>`;
     }).join('');
 }
 
-async function runCurrentMatrixTemplate() {
-    const templateId = state.matrix.activeTemplateId;
-    if (!templateId) {
-        showToast('Lütfen bir matris şablonu seçin', 'error');
+function renderCloudProvidersTable() {
+    const tbody = $('#cloud-providers-tbody');
+    const countEl = $('#cloud-providers-count');
+    const list = state.modelsAdmin.providers || [];
+    if (countEl) countEl.textContent = `${list.length} Provider${list.length === 1 ? '' : 's'}`;
+    if (!tbody) return;
+
+    if (list.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No cloud providers registered yet.</td></tr>';
         return;
     }
 
-    const limitInput = $('#matrix-override-limit');
-    const limitVal = limitInput && limitInput.value.trim() ? parseInt(limitInput.value.trim(), 10) : null;
-
-    const payload = {};
-    if (limitVal && limitVal > 0) {
-        payload.limit_cases = limitVal;
-    }
-
-    const btn = $('#btn-run-matrix');
-    if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = '<span class="inline-spinner" style="width:14px;height:14px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin 0.6s linear infinite;display:inline-block;vertical-align:middle;margin-right:6px;"></span> Başlatılıyor...';
-    }
-
-    try {
-        const res = await fetch(`/api/experiments/${encodeURIComponent(templateId)}/run`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-        });
-
-        if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.detail || 'Matris başlatılamadı');
-        }
-
-        const data = await res.json();
-        showToast(`⚡ ${data.message}`, 'info');
-    } catch (e) {
-        showToast('Hata: ' + e.message, 'error');
-        resetMatrixRunState();
-    }
+    tbody.innerHTML = list.map(p => {
+        const envBadge = p.api_key_configured
+            ? `<span class="badge badge-env-ok">✓ ${escapeHtml(p.api_key_env)}</span>`
+            : `<span class="badge badge-env-missing">✕ ${escapeHtml(p.api_key_env)}</span>`;
+        return `
+            <tr>
+                <td class="mono font-semibold">${escapeHtml(p.provider_id)}</td>
+                <td>${escapeHtml(p.display_name)}</td>
+                <td class="mono text-xs">${escapeHtml(p.dialect)}</td>
+                <td class="mono text-xs">${escapeHtml(p.base_url + p.endpoint_path)}</td>
+                <td>${envBadge}</td>
+                <td class="mono">${p.model_count}</td>
+                <td class="mono">${p.max_concurrency}</td>
+                <td style="text-align: right; white-space: nowrap;">
+                    <button class="btn btn-secondary btn-sm" onclick="openProviderModal('${escapeHtml(p.provider_id)}')">Edit</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteCloudProviderUI('${escapeHtml(p.provider_id)}')" title="Delete">🗑️</button>
+                </td>
+            </tr>`;
+    }).join('');
 }
 
-async function deleteCurrentMatrixTemplate() {
-    const templateId = state.matrix.activeTemplateId;
-    if (!templateId || templateId === 'exp_smoke_dual_track') return;
+function renderLocalModelsTable(localModels) {
+    const tbody = $('#local-models-tbody');
+    const countEl = $('#local-models-count');
+    if (countEl) countEl.textContent = `${localModels.length} Adapters`;
+    if (!tbody) return;
 
-    if (!confirm(`"${templateId}" şablonunu silmek istediğinizden emin misiniz?`)) return;
-
-    try {
-        const res = await fetch(`/api/experiments/${encodeURIComponent(templateId)}`, { method: 'DELETE' });
-        if (!res.ok) throw new Error('Silme işlemi başarısız');
-        showToast(`Şablon "${templateId}" silindi`, 'info');
-        state.matrix.activeTemplateId = 'exp_smoke_dual_track';
-        await loadExperimentTemplates();
-    } catch (e) {
-        showToast('Hata: ' + e.message, 'error');
-    }
+    tbody.innerHTML = localModels.map(m => `
+        <tr>
+            <td class="mono font-semibold">${escapeHtml(m.id)}</td>
+            <td>${escapeHtml(m.icon || '🛡️')} ${escapeHtml(m.name)}</td>
+            <td><span class="badge badge-pending">${escapeHtml(m.backend)}</span></td>
+            <td class="mono text-sm">${escapeHtml(m.quantization || '—')}</td>
+            <td>${m.status === 'available'
+                ? '<span class="badge badge-completed">Available</span>'
+                : '<span class="badge badge-error">Unavailable</span>'}</td>
+            <td class="text-sm text-muted">${escapeHtml(m.description || '')}</td>
+        </tr>`).join('');
 }
 
-function handleMatrixStarted(msg) {
-    state.matrix.isRunning = true;
-    const banner = $('#matrix-live-status-banner');
-    if (banner) banner.style.display = 'block';
-
-    setText('#matrix-live-status-text', `Matris çalışıyor: ${msg.template_name || msg.template_id}`);
-    setText('#matrix-live-progress-badge', `0 / ${msg.total_models}`);
-
-    const btn = $('#btn-run-matrix');
-    if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = '⏳ Matris Çalışıyor...';
-    }
-
-    state.matrix.modelStatuses = {};
-    if (state.matrix.activeTemplate && state.matrix.activeTemplate.models_config) {
-        state.matrix.activeTemplate.models_config.forEach(m => {
-            state.matrix.modelStatuses[m.model_id] = '<span class="badge badge-pending">◌ Beklemede</span>';
-            const cell = $(`#matrix-status-${m.model_id}`);
-            if (cell) cell.innerHTML = '<span class="badge badge-pending">◌ Beklemede</span>';
-        });
-    }
-}
-
-function handleMatrixModelStarted(msg) {
-    const cell = $(`#matrix-status-${msg.model_id}`);
-    const badge = `<span class="badge badge-running">⟳ Değerlendiriliyor (${escapeHtml(msg.runtime_tier)})</span>`;
-    state.matrix.modelStatuses[msg.model_id] = badge;
-    if (cell) cell.innerHTML = badge;
-
-    setText('#matrix-live-status-text', `Değerlendiriliyor: ${msg.model_id} (${msg.runtime_tier})`);
-}
-
-function handleMatrixModelCompleted(msg) {
-    const cell = $(`#matrix-status-${msg.model_id}`);
-    const badge = `<span class="badge badge-completed">✓ Acc: ${msg.accuracy}% · F1: ${msg.f1_score}% · ${msg.avg_latency_ms}ms</span>`;
-    state.matrix.modelStatuses[msg.model_id] = badge;
-    if (cell) cell.innerHTML = badge;
-}
-
-function handleMatrixModelError(msg) {
-    const cell = $(`#matrix-status-${msg.model_id}`);
-    const badge = `<span class="badge badge-error" title="${escapeHtml(msg.error)}">✕ Hata</span>`;
-    state.matrix.modelStatuses[msg.model_id] = badge;
-    if (cell) cell.innerHTML = badge;
-}
-
-function handleMatrixCompleted(msg) {
-    showToast(`✅ Matris tamamlandı! (${msg.completed_count}/${msg.total_count} model)`, 'success');
-    setText('#matrix-live-status-text', `✓ Tamamlandı: ${msg.completed_count} model başarıyla değerlendirildi`);
-    setText('#matrix-live-progress-badge', `${msg.completed_count} / ${msg.total_count}`);
-
-    setTimeout(() => {
-        const banner = $('#matrix-live-status-banner');
-        if (banner) banner.style.display = 'none';
-    }, 4000);
-
-    resetMatrixRunState();
-    loadRuns();
-}
-
-function resetMatrixRunState() {
-    state.matrix.isRunning = false;
-    const btn = $('#btn-run-matrix');
-    if (btn) {
-        btn.disabled = false;
-        btn.innerHTML = '⚡ Matrisi Başlat';
-    }
-}
-
-function openNewTemplateModal() {
-    const modal = $('#new-template-modal');
+function openProviderModal(providerId = null) {
+    const modal = $('#cloud-provider-modal');
     if (!modal) return;
+    const existing = providerId
+        ? state.modelsAdmin.providers.find(p => p.provider_id === providerId)
+        : null;
 
-    // Populate model checkboxes
-    const container = $('#tpl-create-models-list');
-    if (container) {
-        const available = state.models || [];
-        container.innerHTML = available.map(m => `
-            <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,0.05);">
-                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.85rem;">
-                    <input type="checkbox" class="tpl-model-check" value="${escapeHtml(m.id)}" ${m.id === 'laya-mlx' || m.id === 'ollama-d1' ? 'checked' : ''}>
-                    <span>${m.icon || '🛡️'} <strong>${escapeHtml(m.name)}</strong> <span class="mono text-xs text-muted">(${escapeHtml(m.id)})</span></span>
-                </label>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <select class="form-select tpl-model-tier" data-model="${escapeHtml(m.id)}" style="font-size: 0.75rem; padding: 2px 6px; width: auto;">
-                        <option value="AUTO">Auto Tier</option>
-                        <option value="MLX_NATIVE_METAL">MLX Native Metal</option>
-                        <option value="OLLAMA_DAEMON_HTTP">Ollama Daemon</option>
-                        <option value="PYTORCH_MPS">PyTorch MPS</option>
-                    </select>
-                    <label style="font-size: 0.75rem; display: flex; align-items: center; gap: 4px; cursor: pointer;" title="L1 Static Regex Cascade">
-                        <input type="checkbox" class="tpl-model-cascade" data-model="${escapeHtml(m.id)}" checked>
-                        <span>L1</span>
-                    </label>
-                </div>
-            </div>
-        `).join('');
-    }
-
+    $('#prov-edit-mode').value = existing ? 'edit' : 'create';
+    $('#prov-modal-title').textContent = existing ? `✏️ Edit Cloud Provider: ${existing.provider_id}` : '➕ Add Cloud Provider';
+    const idInput = $('#prov-id');
+    idInput.value = existing ? existing.provider_id : '';
+    idInput.disabled = Boolean(existing);
+    $('#prov-display-name').value = existing ? existing.display_name : '';
+    $('#prov-dialect').value = existing ? existing.dialect : 'OPENROUTER_DECISIONS';
+    $('#prov-api-key-env').value = existing ? existing.api_key_env : 'OPENROUTER_API_KEY';
+    $('#prov-base-url').value = existing ? existing.base_url : 'https://openrouter.ai';
+    $('#prov-endpoint-path').value = existing ? existing.endpoint_path : '/api/alpha/decisions';
+    $('#prov-timeout').value = existing ? existing.timeout_seconds : 20;
+    $('#prov-concurrency').value = existing ? existing.max_concurrency : 8;
+    $('#prov-rpm').value = existing && existing.rpm_limit != null ? existing.rpm_limit : '';
     modal.classList.add('open');
 }
 
-function closeNewTemplateModal() {
-    const modal = $('#new-template-modal');
+function closeProviderModal() {
+    const modal = $('#cloud-provider-modal');
     if (modal) modal.classList.remove('open');
 }
 
-async function submitCreateTemplate() {
-    const idInput = $('#tpl-create-id');
-    const nameInput = $('#tpl-create-name');
-    const descInput = $('#tpl-create-desc');
-    const datasetSelect = $('#tpl-create-dataset');
-    const limitInput = $('#tpl-create-limit');
-
-    const templateId = idInput ? idInput.value.trim() : '';
-    const name = nameInput ? nameInput.value.trim() : '';
-    const desc = descInput ? descInput.value.trim() : '';
-    const datasetPath = datasetSelect ? datasetSelect.value.trim() : '';
-    const limitCases = limitInput && limitInput.value ? parseInt(limitInput.value, 10) : null;
-
-    if (!templateId) {
-        showToast('Lütfen şablon kimliği (slug) girin', 'error');
-        return;
-    }
-    if (!name) {
-        showToast('Lütfen şablon başlığı girin', 'error');
-        return;
-    }
-
-    // Collect checked models
-    const selectedModels = [];
-    const checkboxes = document.querySelectorAll('.tpl-model-check:checked');
-    checkboxes.forEach(cb => {
-        const modelId = cb.value;
-        const tierSelect = document.querySelector(`.tpl-model-tier[data-model="${modelId}"]`);
-        const cascadeCheck = document.querySelector(`.tpl-model-cascade[data-model="${modelId}"]`);
-
-        const tierVal = tierSelect ? tierSelect.value : 'AUTO';
-        const enableCascade = cascadeCheck ? cascadeCheck.checked : false;
-
-        const spec = {
-            model_id: modelId,
-            enable_l1_cascade: enableCascade,
-        };
-        if (tierVal && tierVal !== 'AUTO') {
-            spec.runtime_tier = tierVal;
-        }
-        selectedModels.push(spec);
-    });
-
-    if (selectedModels.length === 0) {
-        showToast('En az bir model seçmelisiniz', 'error');
-        return;
-    }
-
+async function submitProviderForm() {
+    const mode = $('#prov-edit-mode').value;
+    const providerId = $('#prov-id').value.trim().toLowerCase();
     const payload = {
-        template_id: templateId,
-        name: name,
-        description: desc,
-        dataset_path: datasetPath,
-        models_config: selectedModels,
-        limit_cases: limitCases,
+        provider_id: providerId,
+        display_name: $('#prov-display-name').value.trim(),
+        dialect: $('#prov-dialect').value,
+        base_url: $('#prov-base-url').value.trim(),
+        endpoint_path: $('#prov-endpoint-path').value.trim(),
+        api_key_env: $('#prov-api-key-env').value.trim(),
+        timeout_seconds: parseFloat($('#prov-timeout').value) || 20.0,
+        max_concurrency: parseInt($('#prov-concurrency').value, 10) || 8,
+        rpm_limit: $('#prov-rpm').value ? parseInt($('#prov-rpm').value, 10) : null,
     };
 
     try {
-        const res = await fetch('/api/experiments', {
-            method: 'POST',
+        const url = mode === 'edit' ? `/api/cloud-providers/${encodeURIComponent(providerId)}` : '/api/cloud-providers';
+        const res = await fetch(url, {
+            method: mode === 'edit' ? 'PUT' : 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
         });
-
         if (!res.ok) {
             const err = await res.json();
-            throw new Error(err.detail || 'Şablon oluşturulamadı');
+            throw new Error(err.detail || 'Failed to save provider');
         }
-
-        showToast(`✅ Şablon "${name}" başarıyla oluşturuldu`, 'success');
-        closeNewTemplateModal();
-        state.matrix.activeTemplateId = templateId;
-        await loadExperimentTemplates();
+        closeProviderModal();
+        showToast(`Provider "${providerId}" saved`, 'success');
+        await loadModelsPage();
     } catch (e) {
-        showToast('Hata: ' + e.message, 'error');
+        showToast(e.message, 'error');
     }
+}
+
+async function deleteCloudProviderUI(providerId) {
+    if (!confirm(`Delete cloud provider "${providerId}"?`)) return;
+    try {
+        const res = await fetch(`/api/cloud-providers/${encodeURIComponent(providerId)}`, { method: 'DELETE' });
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || 'Failed to delete provider');
+        }
+        showToast(`Provider "${providerId}" deleted`, 'success');
+        await loadModelsPage();
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+function openCloudModelModal(modelId = null) {
+    const modal = $('#cloud-model-modal');
+    if (!modal) return;
+    if (state.modelsAdmin.providers.length === 0) {
+        showToast('Create a Cloud Provider first before adding a Cloud Model.', 'error');
+        return;
+    }
+
+    const provSelect = $('#cmodel-provider-id');
+    provSelect.innerHTML = state.modelsAdmin.providers
+        .map(p => `<option value="${escapeHtml(p.provider_id)}">${escapeHtml(p.display_name)} (${escapeHtml(p.provider_id)})</option>`)
+        .join('');
+
+    const existing = modelId
+        ? state.modelsAdmin.cloudModels.find(m => m.model_id === modelId)
+        : null;
+
+    $('#cmodel-edit-mode').value = existing ? 'edit' : 'create';
+    $('#cmodel-modal-title').textContent = existing ? `✏️ Edit Cloud Model: ${existing.model_id}` : '➕ Add Cloud Model';
+    const idInput = $('#cmodel-id');
+    idInput.value = existing ? existing.model_id : '';
+    idInput.disabled = Boolean(existing);
+    provSelect.value = existing ? existing.provider_id : state.modelsAdmin.providers[0].provider_id;
+    $('#cmodel-slug').value = existing ? existing.remote_model_slug : '';
+    $('#cmodel-exploit-th').value = existing ? existing.exploit_threshold : 0.50;
+    $('#cmodel-misalign-th').value = existing ? existing.misalignment_threshold : 0.65;
+    $('#cmodel-threat-th').value = existing ? existing.threat_threshold : 0.50;
+    $('#cmodel-price').value = existing && existing.input_price_per_1m_usd != null ? existing.input_price_per_1m_usd : '';
+    $('#cmodel-ctx').value = existing && existing.max_context_tokens != null ? existing.max_context_tokens : '';
+    $('#cmodel-state-format').value = existing ? existing.state_format : 'canonical_text';
+    $('#cmodel-enabled').checked = existing ? Boolean(existing.enabled) : true;
+    modal.classList.add('open');
+}
+
+function closeCloudModelModal() {
+    const modal = $('#cloud-model-modal');
+    if (modal) modal.classList.remove('open');
+}
+
+async function submitCloudModelForm() {
+    const mode = $('#cmodel-edit-mode').value;
+    const modelId = $('#cmodel-id').value.trim().toLowerCase();
+    const payload = {
+        model_id: modelId,
+        provider_id: $('#cmodel-provider-id').value,
+        remote_model_slug: $('#cmodel-slug').value.trim(),
+        exploit_threshold: parseFloat($('#cmodel-exploit-th').value) || 0.50,
+        misalignment_threshold: parseFloat($('#cmodel-misalign-th').value) || 0.65,
+        threat_threshold: parseFloat($('#cmodel-threat-th').value) || 0.50,
+        input_price_per_1m_usd: $('#cmodel-price').value !== '' ? parseFloat($('#cmodel-price').value) : null,
+        max_context_tokens: $('#cmodel-ctx').value !== '' ? parseInt($('#cmodel-ctx').value, 10) : null,
+        state_format: $('#cmodel-state-format').value,
+        enabled: $('#cmodel-enabled').checked,
+    };
+
+    try {
+        const url = mode === 'edit' ? `/api/cloud-models/${encodeURIComponent(modelId)}` : '/api/cloud-models';
+        const res = await fetch(url, {
+            method: mode === 'edit' ? 'PUT' : 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || 'Failed to save cloud model');
+        }
+        closeCloudModelModal();
+        showToast(`Cloud model "${modelId}" saved`, 'success');
+        await Promise.all([loadModelsPage(), loadModels()]);
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+async function toggleCloudModelEnabled(modelId) {
+    const m = state.modelsAdmin.cloudModels.find(x => x.model_id === modelId);
+    if (!m) return;
+    const payload = {
+        model_id: m.model_id,
+        provider_id: m.provider_id,
+        remote_model_slug: m.remote_model_slug,
+        question_profile_id: m.question_profile_id,
+        state_format: m.state_format,
+        exploit_threshold: m.exploit_threshold,
+        misalignment_threshold: m.misalignment_threshold,
+        threat_threshold: m.threat_threshold,
+        input_price_per_1m_usd: m.input_price_per_1m_usd,
+        max_context_tokens: m.max_context_tokens,
+        enabled: !m.enabled,
+    };
+    try {
+        const res = await fetch(`/api/cloud-models/${encodeURIComponent(modelId)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error('Failed to toggle model status');
+        showToast(`Model "${modelId}" ${payload.enabled ? 'enabled' : 'disabled'}`, 'info');
+        await Promise.all([loadModelsPage(), loadModels()]);
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+async function deleteCloudModelUI(modelId) {
+    if (!confirm(`Delete cloud model "${modelId}"?`)) return;
+    try {
+        const res = await fetch(`/api/cloud-models/${encodeURIComponent(modelId)}`, { method: 'DELETE' });
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || 'Failed to delete model');
+        }
+        showToast(`Cloud model "${modelId}" deleted`, 'success');
+        await Promise.all([loadModelsPage(), loadModels()]);
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+// ─── Paginated & Multi-Select History (ADR 0012) ────────────────────────────
+
+async function loadHistoryPage() {
+    const h = state.history;
+    const offset = (h.page - 1) * h.limit;
+    const params = new URLSearchParams({ limit: String(h.limit), offset: String(offset) });
+    if (h.dataset) params.set('dataset', h.dataset);
+    if (h.model) params.set('model', h.model);
+    if (h.status && h.status !== 'all') params.set('status', h.status);
+
+    try {
+        const res = await fetch(`/api/runs?${params.toString()}`);
+        if (!res.ok) throw new Error('Failed to load history');
+        const totalHeader = parseInt(res.headers.get('X-Total-Count') || '0', 10);
+        const items = await res.json();
+        h.items = items;
+        h.total = Number.isNaN(totalHeader) ? items.length : totalHeader;
+        h.totalPages = Math.max(1, Math.ceil(h.total / h.limit));
+        if (h.page > h.totalPages) {
+            h.page = h.totalPages;
+        }
+        renderHistoryTable();
+        updateHistorySelectionBar();
+    } catch (e) {
+        console.error('Failed to load paginated history:', e);
+    }
+}
+
+function renderHistoryTable() {
+    const tbody = $('#history-tbody');
+    const h = state.history;
+    if (!tbody) return;
+
+    if (h.items.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No benchmark runs match the current filters.</td></tr>';
+    } else {
+        tbody.innerHTML = h.items.map(r => {
+            const selectable = r.status === 'completed' || r.status === 'budget_stopped';
+            const checked = h.selectedRunIds.has(r.run_id) ? 'checked' : '';
+            const startedAt = r.started_at ? new Date(r.started_at).toLocaleString('en-US') : '—';
+            return `
+                <tr onclick="viewRunDetail('${escapeHtml(r.run_id)}')">
+                    <td style="text-align: center;" onclick="event.stopPropagation()">
+                        <input type="checkbox" ${checked} ${selectable ? '' : 'disabled title="Only completed or budget_stopped runs can be added to a report"'}
+                            onchange="toggleHistoryRunSelection('${escapeHtml(r.run_id)}', this.checked)">
+                    </td>
+                    <td><span class="mono text-sm">${escapeHtml(r.run_id)}</span></td>
+                    <td>${escapeHtml(r.dataset_name)}</td>
+                    <td>${escapeHtml(r.model_name)}</td>
+                    <td class="mono">${r.total_cases || '—'}</td>
+                    <td class="mono ${getMetricClass(r.accuracy)}">${r.accuracy ? r.accuracy + '%' : '—'}</td>
+                    <td class="mono ${getMetricClass(r.f1)}">${r.f1 ? r.f1 + '%' : '—'}</td>
+                    <td class="mono">${r.avg_latency_ms ? r.avg_latency_ms + 'ms' : '—'}</td>
+                    <td>${getStatusBadge(r.status)}</td>
+                    <td>
+                        <span class="text-sm text-muted">${startedAt}</span>
+                        <button class="btn btn-danger btn-sm" onclick="deleteRunFromHistory('${escapeHtml(r.run_id)}', event)" title="Delete" style="margin-left:8px;">✕</button>
+                    </td>
+                </tr>`;
+        }).join('');
+    }
+
+    const startIdx = h.total === 0 ? 0 : (h.page - 1) * h.limit + 1;
+    const endIdx = Math.min(h.page * h.limit, h.total);
+    setText('#history-pagination-info', `Showing ${startIdx} - ${endIdx} of ${h.total} runs`);
+    setText('#history-current-page', String(h.page));
+    setText('#history-total-pages', String(h.totalPages));
+    const prevDisabled = h.page <= 1;
+    const nextDisabled = h.page >= h.totalPages;
+    if ($('#history-page-first')) $('#history-page-first').disabled = prevDisabled;
+    if ($('#history-page-prev')) $('#history-page-prev').disabled = prevDisabled;
+    if ($('#history-page-next')) $('#history-page-next').disabled = nextDisabled;
+    if ($('#history-page-last')) $('#history-page-last').disabled = nextDisabled;
+}
+
+function toggleHistoryRunSelection(runId, checked) {
+    if (checked) {
+        state.history.selectedRunIds.add(runId);
+    } else {
+        state.history.selectedRunIds.delete(runId);
+    }
+    updateHistorySelectionBar();
+}
+
+function updateHistorySelectionBar() {
+    const bar = $('#history-selection-bar');
+    const count = state.history.selectedRunIds.size;
+    if (!bar) return;
+    bar.style.display = count > 0 ? 'flex' : 'none';
+    setText('#history-selected-count', `${count} run${count === 1 ? '' : 's'} selected`);
+
+    const addBtn = $('#btn-history-add-to-draft');
+    if (addBtn) {
+        const hasActiveDraft = Boolean(state.reports.activeReport && state.reports.activeReport.status === 'draft');
+        addBtn.style.display = hasActiveDraft ? 'inline-flex' : 'none';
+    }
+}
+
+function clearHistorySelection() {
+    state.history.selectedRunIds.clear();
+    renderHistoryTable();
+    updateHistorySelectionBar();
+}
+
+function onHistoryFilterChanged() {
+    clearTimeout(state.history.filterDebounceTimer);
+    state.history.filterDebounceTimer = setTimeout(() => {
+        state.history.dataset = ($('#history-filter-dataset')?.value || '').trim();
+        state.history.model = ($('#history-filter-model')?.value || '').trim();
+        state.history.status = $('#history-filter-status')?.value || 'all';
+        state.history.page = 1;
+        loadHistoryPage();
+    }, 220);
+}
+
+function onHistoryPageSizeChanged() {
+    state.history.limit = parseInt($('#history-page-size')?.value || '25', 10);
+    state.history.page = 1;
+    loadHistoryPage();
+}
+
+function resetHistoryFilters() {
+    if ($('#history-filter-dataset')) $('#history-filter-dataset').value = '';
+    if ($('#history-filter-model')) $('#history-filter-model').value = '';
+    if ($('#history-filter-status')) $('#history-filter-status').value = 'all';
+    state.history.dataset = '';
+    state.history.model = '';
+    state.history.status = 'all';
+    state.history.page = 1;
+    loadHistoryPage();
+}
+
+function goToHistoryPage(page) {
+    const target = Math.max(1, Math.min(page, state.history.totalPages));
+    if (target === state.history.page) return;
+    state.history.page = target;
+    loadHistoryPage();
+}
+
+async function deleteRunFromHistory(runId, event) {
+    if (event) event.stopPropagation();
+    await deleteRun(runId, event);
+    state.history.selectedRunIds.delete(runId);
+    await loadHistoryPage();
+}
+
+async function createReportFromHistorySelection() {
+    const runIds = Array.from(state.history.selectedRunIds);
+    if (runIds.length === 0) return;
+    const today = new Date().toISOString().slice(0, 10);
+    try {
+        const res = await fetch('/api/reports', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                title: `Periodic Benchmark Report (${today})`,
+                period_label: today.slice(0, 7),
+                researcher_notes: '',
+                selected_run_ids: runIds,
+            }),
+        });
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || 'Failed to create draft report');
+        }
+        const created = await res.json();
+        state.history.selectedRunIds.clear();
+        state.reports.activeReportId = created.report_id;
+        state.reports.activeReport = created;
+        showToast(`Draft report "${created.title}" created with ${runIds.length} run(s)`, 'success');
+        switchPage('reports');
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+async function addHistorySelectionToActiveDraft() {
+    const active = state.reports.activeReport;
+    if (!active || active.status !== 'draft') {
+        showToast('Open a draft report in Report Studio first.', 'error');
+        return;
+    }
+    const merged = Array.from(new Set([...(active.selected_run_ids || []), ...state.history.selectedRunIds]));
+    try {
+        const res = await fetch(`/api/reports/${encodeURIComponent(active.report_id)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ selected_run_ids: merged }),
+        });
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || 'Failed to add runs to draft');
+        }
+        state.reports.activeReport = await res.json();
+        state.history.selectedRunIds.clear();
+        showToast(`Added runs to draft "${active.title}"`, 'success');
+        switchPage('reports');
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+// ─── Periodic Report Studio (ADR 0012) ──────────────────────────────────────
+
+async function loadReportsPage() {
+    try {
+        const res = await fetch('/api/reports');
+        if (!res.ok) throw new Error('Failed to load reports');
+        state.reports.list = await res.json();
+        renderReportsSidebar();
+
+        if (state.reports.activeReportId) {
+            const exists = state.reports.list.some(r => r.report_id === state.reports.activeReportId);
+            if (exists) {
+                await selectReport(state.reports.activeReportId);
+                return;
+            }
+        }
+        if (state.reports.list.length > 0) {
+            await selectReport(state.reports.list[0].report_id);
+        } else {
+            state.reports.activeReportId = null;
+            state.reports.activeReport = null;
+            renderActiveReport();
+        }
+    } catch (e) {
+        console.error('Failed to load reports:', e);
+        showToast('Failed to load reports', 'error');
+    }
+}
+
+function renderReportsSidebar() {
+    const container = $('#reports-list-container');
+    if (!container) return;
+    const list = state.reports.list || [];
+    if (list.length === 0) {
+        container.innerHTML = '<div class="empty-state">No saved reports yet. Select runs in History or create a new draft.</div>';
+        return;
+    }
+
+    container.innerHTML = list.map(r => {
+        const isActive = r.report_id === state.reports.activeReportId;
+        const badge = r.status === 'published'
+            ? '<span class="badge badge-sealed">🔒 Sealed</span>'
+            : '<span class="badge badge-draft">✏️ Draft</span>';
+        return `
+            <button type="button" class="report-list-item ${isActive ? 'active' : ''}" onclick="selectReport('${escapeHtml(r.report_id)}')">
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 4px;">
+                    <span class="font-semibold text-sm">${escapeHtml(r.title)}</span>
+                    ${badge}
+                </div>
+                <div class="text-xs text-muted mono">${escapeHtml(r.period_label || 'No period')} · ${r.run_count} run${r.run_count === 1 ? '' : 's'}</div>
+            </button>`;
+    }).join('');
+}
+
+async function selectReport(reportId) {
+    try {
+        const res = await fetch(`/api/reports/${encodeURIComponent(reportId)}`);
+        if (!res.ok) throw new Error('Failed to load report details');
+        state.reports.activeReportId = reportId;
+        state.reports.activeReport = await res.json();
+        renderReportsSidebar();
+        renderActiveReport();
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+async function createEmptyDraftReport() {
+    const today = new Date().toISOString().slice(0, 10);
+    try {
+        const res = await fetch('/api/reports', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                title: `New Periodic Report (${today})`,
+                period_label: today.slice(0, 7),
+                researcher_notes: '',
+                selected_run_ids: [],
+            }),
+        });
+        if (!res.ok) throw new Error('Failed to create draft');
+        const created = await res.json();
+        state.reports.activeReportId = created.report_id;
+        state.reports.activeReport = created;
+        showToast('New draft report created', 'success');
+        await loadReportsPage();
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+function renderActiveReport() {
+    const emptyEl = $('#report-empty-state');
+    const editorEl = $('#report-editor-container');
+    const r = state.reports.activeReport;
+    if (!r) {
+        if (emptyEl) emptyEl.style.display = 'flex';
+        if (editorEl) editorEl.style.display = 'none';
+        return;
+    }
+    if (emptyEl) emptyEl.style.display = 'none';
+    if (editorEl) editorEl.style.display = 'block';
+
+    const isPublished = r.status === 'published';
+    setText('#rpt-active-id', r.report_id);
+    const statusBadge = $('#rpt-status-badge');
+    if (statusBadge) {
+        statusBadge.innerHTML = isPublished
+            ? '<span class="badge badge-sealed">🔒 Published (Sealed Snapshot — Immutable)</span>'
+            : '<span class="badge badge-draft">✏️ Draft (Editable)</span>';
+    }
+    setText('#rpt-published-at', isPublished && r.published_at ? `Sealed at ${new Date(r.published_at).toLocaleString('en-US')}` : '');
+
+    // Toggle editable controls based on lifecycle state
+    const titleInput = $('#rpt-title-input');
+    const periodInput = $('#rpt-period-input');
+    const notesInput = $('#rpt-notes-input');
+    if (titleInput) { titleInput.value = r.title || ''; titleInput.disabled = isPublished; }
+    if (periodInput) { periodInput.value = r.period_label || ''; periodInput.disabled = isPublished; }
+    if (notesInput) { notesInput.value = r.researcher_notes || ''; notesInput.disabled = isPublished; }
+
+    if ($('#btn-rpt-save')) $('#btn-rpt-save').style.display = isPublished ? 'none' : 'inline-flex';
+    if ($('#btn-rpt-publish')) $('#btn-rpt-publish').style.display = isPublished ? 'none' : 'inline-flex';
+    if ($('#btn-rpt-add-from-history')) $('#btn-rpt-add-from-history').style.display = isPublished ? 'none' : 'inline-flex';
+
+    // Pruned runs alert (draft only)
+    const prunedEl = $('#rpt-pruned-alert');
+    if (prunedEl) {
+        if (r.pruned_run_ids && r.pruned_run_ids.length > 0) {
+            prunedEl.style.display = 'block';
+            prunedEl.innerHTML = `<strong>⚠️ Deleted Runs Removed from Draft:</strong> ${r.pruned_run_ids.map(escapeHtml).join(', ')}`;
+        } else {
+            prunedEl.style.display = 'none';
+        }
+    }
+
+    // Parity Warnings
+    const warnings = (r.dossier && r.dossier.parity_warnings) || [];
+    const warnEl = $('#rpt-parity-warnings');
+    if (warnEl) {
+        if (warnings.length > 0) {
+            warnEl.style.display = 'block';
+            warnEl.innerHTML = `<strong>⚠️ Apples-to-Apples Parity Caveats (${warnings.length}):</strong><ul>${warnings.map(w => `<li>${escapeHtml(w)}</li>`).join('')}</ul>`;
+        } else {
+            warnEl.style.display = 'none';
+        }
+    }
+
+    // Included Runs Table
+    const runs = (r.dossier && r.dossier.runs) || [];
+    setText('#rpt-runs-count', String(runs.length));
+    const tbody = $('#rpt-runs-tbody');
+    if (tbody) {
+        if (runs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No runs selected yet. Click "Add Runs from History".</td></tr>';
+        } else {
+            tbody.innerHTML = runs.map(run => `
+                <tr>
+                    <td class="mono text-xs">${escapeHtml(run.run_id)}</td>
+                    <td class="font-semibold">${escapeHtml(run.model_name)}</td>
+                    <td>${getRuntimeTierBadge(run.runtime_tier)}</td>
+                    <td class="text-xs">${escapeHtml(run.dataset_base || run.dataset_name)}</td>
+                    <td class="mono">${run.accuracy.toFixed(2)}%</td>
+                    <td class="mono">${run.f1.toFixed(2)}%</td>
+                    <td class="mono">${run.fpr.toFixed(2)}%</td>
+                    <td class="mono text-xs">$${Number(run.total_cost_usd || 0).toFixed(4)}</td>
+                    <td>${getStatusBadge(run.status)}</td>
+                    <td>${isPublished ? '' : `<button class="btn btn-danger btn-sm" onclick="removeRunFromDraft('${escapeHtml(run.run_id)}')" title="Remove">✕</button>`}</td>
+                </tr>`).join('');
+        }
+    }
+
+    // AI-Ready Markdown Preview
+    const pre = $('#rpt-markdown-preview');
+    if (pre) pre.textContent = r.markdown_preview || '';
+}
+
+async function saveCurrentDraft() {
+    const r = state.reports.activeReport;
+    if (!r || r.status === 'published') return;
+    try {
+        const res = await fetch(`/api/reports/${encodeURIComponent(r.report_id)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                title: $('#rpt-title-input').value.trim(),
+                period_label: $('#rpt-period-input').value.trim(),
+                researcher_notes: $('#rpt-notes-input').value.trim(),
+            }),
+        });
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || 'Failed to save draft');
+        }
+        state.reports.activeReport = await res.json();
+        showToast('Draft saved', 'success');
+        await loadReportsPage();
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+async function removeRunFromDraft(runId) {
+    const r = state.reports.activeReport;
+    if (!r || r.status === 'published') return;
+    const remaining = (r.selected_run_ids || []).filter(id => id !== runId);
+    try {
+        const res = await fetch(`/api/reports/${encodeURIComponent(r.report_id)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ selected_run_ids: remaining }),
+        });
+        if (!res.ok) throw new Error('Failed to remove run');
+        state.reports.activeReport = await res.json();
+        renderActiveReport();
+        showToast(`Removed ${runId} from draft`, 'info');
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+async function publishCurrentReport() {
+    const r = state.reports.activeReport;
+    if (!r || r.status === 'published') return;
+    if (!confirm('Publish & seal this report? Once published, its snapshot is frozen permanently and cannot be edited.')) return;
+    // Save latest title/period/notes before sealing
+    await saveCurrentDraft();
+    try {
+        const res = await fetch(`/api/reports/${encodeURIComponent(r.report_id)}/publish`, { method: 'POST' });
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || 'Failed to publish report');
+        }
+        state.reports.activeReport = await res.json();
+        showToast('🔒 Report published and sealed!', 'success');
+        await loadReportsPage();
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+async function duplicateCurrentReport() {
+    const r = state.reports.activeReport;
+    if (!r) return;
+    try {
+        const res = await fetch(`/api/reports/${encodeURIComponent(r.report_id)}/duplicate`, { method: 'POST' });
+        if (!res.ok) throw new Error('Failed to duplicate report');
+        const copy = await res.json();
+        state.reports.activeReportId = copy.report_id;
+        state.reports.activeReport = copy;
+        showToast(`Duplicated as draft "${copy.title}"`, 'success');
+        await loadReportsPage();
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+async function deleteCurrentReport() {
+    const r = state.reports.activeReport;
+    if (!r) return;
+    const msg = r.status === 'published'
+        ? `Permanently delete sealed report "${r.title}"?`
+        : `Delete draft report "${r.title}"?`;
+    if (!confirm(msg)) return;
+    try {
+        const res = await fetch(`/api/reports/${encodeURIComponent(r.report_id)}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Failed to delete report');
+        state.reports.activeReportId = null;
+        state.reports.activeReport = null;
+        showToast('Report deleted', 'success');
+        await loadReportsPage();
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
+async function copyReportMarkdown() {
+    const r = state.reports.activeReport;
+    if (!r || !r.markdown_preview) return;
+    try {
+        await navigator.clipboard.writeText(r.markdown_preview);
+        showToast('📋 AI-Ready Markdown copied to clipboard!', 'success');
+    } catch (e) {
+        showToast('Clipboard copy failed — use Download .md instead', 'error');
+    }
+}
+
+function downloadReportExport(format) {
+    const r = state.reports.activeReport;
+    if (!r) return;
+    window.location.href = `/api/reports/${encodeURIComponent(r.report_id)}/export?format=${format}`;
 }

@@ -1,33 +1,31 @@
-# Task Checklist: Generic Cloud Decision Model Benchmarking (Phase 8)
+# Task Checklist: Web Studio Redesign — Models Dashboard & Periodic AI-Ready Report Studio (Phase 9)
 
 * **Governing Specification:** [SPEC.md](../../SPEC.md)
 * **Canonical Checklist:** [tasks/todo.md](../../tasks/todo.md)
 * **Implementation Plan:** [plan.md](plan.md)
-* **Status:** Implemented (Offline Complete; Live OpenRouter `WF-005` & Smoke Run Gated on `OPENROUTER_API_KEY` + Parquet Datasets)
+* **Status:** Implemented & Verified
 
 ---
 
-## Phase 1: Pre-Flight Dependencies, Live Wire Check & Core Parity
+## Phase 1: DB Hardening, Parity Schema & Write Serialization (`db-hardening-and-parity-schema`)
 
-- [ ] **Task 1: Runtime Dependencies & Live OpenRouter Jev Verification (`WF-005`)** (`pyproject.toml` done; `WF-005` live capture gated on `OPENROUTER_API_KEY`, `MAP.md`)
-- [x] **Task 2: `EvalStatus`, `EvaluationResult` & `BaseModelAdapter.format_decision_state()` Core** (`adapters/base.py`, `tests/test_eval_status_parity.py`)
-- [x] **Task 3: Refusal & State Parity Fixes in Local Adapters and MCP Factory** (`adapters/ollama_decision_adapter.py`, `adapters/kev_adapter.py`, `laya_security_guard_mcp.py`, `guard_mcp_factory.py`, `tests/test_ollama_decision_adapter.py`)
-- [x] **🛑 Checkpoint 1: `eval-status-and-state-parity` Verified**
+- [x] **Task 1: Cloud Registry Hardening & `run_history` Parity Columns** (`adapters/cloud_registry.py`, `benchmark_matrix.py`, `tests/test_cloud_registry.py`)
+- [x] **Task 2: `web/app.py` Boot Hygiene (`load_dotenv`), `DB_WRITE_LOCK` & Paginated `/api/runs`** (`web/app.py`, `web/schemas.py`)
+- [x] **🛑 Checkpoint 1: Core DB & History Parity Verified**
 
-## Phase 2: DuckDB Cloud Registry, Secret Hygiene & Unified Resolution
+## Phase 2: Cloud Models CRUD API (`cloud-models-crud-api`)
 
-- [x] **Task 4: DuckDB `cloud_providers` / `cloud_models` Registry, Secret Hygiene & Seed YAML** (`adapters/cloud_registry.py`, `config/cloud_models/default_systemone.yaml`, `tests/test_cloud_registry.py`)
-- [x] **Task 5: `manage_cloud_models.py` CLI & Unified `resolve_adapter()` in `benchmark_runner.py`** (`scripts/manage_cloud_models.py`, `adapters/cloud_registry.py`, `benchmark_runner.py`, `tests/test_cloud_registry.py`)
-- [x] **🛑 Checkpoint 2: `cloud-provider-registry` Verified**
+- [x] **Task 3: FastAPI Cloud Providers & Cloud Models CRUD Endpoints + Tests** (`web/schemas.py`, `web/app.py`, `tests/test_cloud_models_api.py`)
+- [x] **🛑 Checkpoint 2: Cloud CRUD API Verified**
 
-## Phase 3: `SystemOneCloudAdapter` (TDD Cycle)
+## Phase 3: Report Studio Backend & AI-Ready Bundle (`report-studio-backend-and-bundle`)
 
-- [x] **Task 6: `SystemOneCloudAdapter` Unit Test Suite (TDD RED)** (`tests/test_systemone_cloud_adapter.py`)
-- [x] **Task 7: `SystemOneCloudAdapter` & `QuestionProfile` Implementation (TDD GREEN)** (`adapters/systemone_cloud_adapter.py`, `adapters/cloud_registry.py`, `adapters/__init__.py`)
-- [x] **🛑 Checkpoint 3: `systemone-cloud-adapter` Verified**
+- [x] **Task 4: `adapters/report_registry.py` — `benchmark_reports` Schema, Lifecycle (`draft` → `published`), Parity Guard & Metadata-Only AI-Ready Bundle** (`adapters/report_registry.py`, `tests/test_reports_api.py`)
+- [x] **Task 5: FastAPI `/api/reports*` Endpoints & Export Integration Tests** (`web/schemas.py`, `web/app.py`, `tests/test_reports_api.py`)
+- [x] **🛑 Checkpoint 3: Report Studio API & Export Verified**
 
-## Phase 4: Cloud Matrix Execution, Resume & Web Parity
+## Phase 4: Web Studio UI Redesign & `Matrix Studio` Retirement (`web-studio-ui-redesign`)
 
-- [x] **Task 8: Cloud Matrix Concurrency, Single DuckDB Writer, Atomic Budget Cap & `--resume-run-id`** (`benchmark_matrix.py`, `benchmark_runner.py`, `tests/test_cloud_execution_resume.py`, `tests/test_benchmark_matrix.py`)
-- [x] **Task 9: Web Backend Schema Parity, Explicit-Column Insert & `asyncio.to_thread` Safety** (`web/schemas.py`, `web/app.py`, `tests/test_relational_storage.py`, `tests/test_experiment_api.py`)
-- [ ] **🛑 Checkpoint 4: Full `make test-unit` Regression & Live Smoke Verification** (68/68 Phase 8 + core unit tests passed; YAML seeded to DuckDB; live smoke run gated on `OPENROUTER_API_KEY` + parquet datasets)
+- [x] **Task 6: `Models` Tab UI (Local Read-Only + Cloud Provider/Model CRUD Modals)** (`web/templates/index.html`, `web/static/app.js`, `web/static/index.css`)
+- [x] **Task 7: Retire `Matrix Studio` UI → Build `Report Studio` & Paginated Multi-Select `History` + Update Tests** (`web/templates/index.html`, `web/static/app.js`, `web/static/index.css`, `tests/test_experiment_api.py`)
+- [x] **🛑 Checkpoint 4: Full `make test-unit` Regression & `ruff check` Verification**

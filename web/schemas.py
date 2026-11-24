@@ -133,6 +133,9 @@ class RunSummary(BaseModel):
     skipped_count: int = Field(0, description="Pre-flight skipped count")
     total_cost_usd: float = Field(0.0, description="Total USD cost")
     cost_source: str = Field("none", description="Cost provenance: api_reported | estimated_fallback | mixed | none")
+    tier_scope: Optional[str] = Field("all", description="Evaluated analysis tier scope: all | static | semantic")
+    enable_l1: Optional[bool] = Field(None, description="Whether L1 static cascade was enabled")
+    limit_cases: Optional[int] = Field(None, description="Optional case limit applied to run")
     started_at: Optional[Any] = Field(None, description="Start timestamp")
     completed_at: Optional[Any] = Field(None, description="Completion timestamp")
 
@@ -263,3 +266,117 @@ class TestCasesListResponse(BaseModel):
     """Paginated list of benchmark test cases."""
     cases: List[TestCaseItem]
     pagination: TestCasePagination
+
+
+# ─── Cloud Provider & Model Registry CRUD (ADR 0012) ──────────────────────────
+
+class CloudProviderUpsertRequest(BaseModel):
+    """Request payload to create or update a CloudProviderSpec."""
+    provider_id: str = Field(..., min_length=1)
+    display_name: str = Field(..., min_length=1)
+    dialect: str = Field(..., min_length=1)
+    base_url: str = Field(..., min_length=1)
+    endpoint_path: str = Field(..., min_length=1)
+    api_key_env: str = Field(..., min_length=1)
+    extra_headers: Dict[str, str] = Field(default_factory=dict)
+    timeout_seconds: float = Field(15.0, gt=0.0)
+    max_concurrency: int = Field(8, ge=1, le=64)
+    rpm_limit: Optional[int] = Field(None, ge=1)
+    max_body_bytes: Optional[int] = Field(None, ge=1024)
+    max_questions: Optional[int] = Field(None, ge=1)
+
+
+class CloudProviderItem(BaseModel):
+    """Response representation of a cloud provider (never exposes raw API keys)."""
+    provider_id: str
+    display_name: str
+    dialect: str
+    base_url: str
+    endpoint_path: str
+    api_key_env: str
+    api_key_configured: bool = False
+    model_count: int = 0
+    extra_headers: Dict[str, str] = Field(default_factory=dict)
+    timeout_seconds: float = 15.0
+    max_concurrency: int = 8
+    rpm_limit: Optional[int] = None
+    max_body_bytes: Optional[int] = None
+    max_questions: Optional[int] = None
+
+
+class CloudModelUpsertRequest(BaseModel):
+    """Request payload to create or update a CloudModelSpec."""
+    model_id: str = Field(..., min_length=1)
+    provider_id: str = Field(..., min_length=1)
+    remote_model_slug: str = Field(..., min_length=1)
+    question_profile_id: str = Field("dual_check_v1", min_length=1)
+    state_format: str = Field("canonical_text")
+    exploit_threshold: float = Field(0.50, ge=0.0, le=1.0)
+    misalignment_threshold: float = Field(0.65, ge=0.0, le=1.0)
+    threat_threshold: float = Field(0.50, ge=0.0, le=1.0)
+    input_price_per_1m_usd: Optional[float] = Field(None, ge=0.0)
+    max_context_tokens: Optional[int] = Field(None, ge=1)
+    enabled: bool = True
+
+
+class CloudModelItem(BaseModel):
+    """Response representation of a DuckDB cloud_models entry."""
+    model_id: str
+    provider_id: str
+    provider_display_name: str = ""
+    dialect: str = ""
+    api_key_env: str = ""
+    api_key_configured: bool = False
+    remote_model_slug: str
+    question_profile_id: str = "dual_check_v1"
+    state_format: str = "canonical_text"
+    exploit_threshold: float = 0.50
+    misalignment_threshold: float = 0.65
+    threat_threshold: float = 0.50
+    input_price_per_1m_usd: Optional[float] = None
+    max_context_tokens: Optional[int] = None
+    enabled: bool = True
+
+
+class CloudDeleteResponse(BaseModel):
+    """Confirmation payload returned upon deleting a cloud provider or model."""
+    deleted: str
+
+
+# ─── Curated Periodic Benchmark Reports (ADR 0012) ────────────────────────────
+
+class ReportCreateRequest(BaseModel):
+    """Request payload to create a new draft curated benchmark report."""
+    title: str = Field(..., min_length=1)
+    period_label: str = Field("")
+    researcher_notes: str = Field("")
+    selected_run_ids: List[str] = Field(default_factory=list)
+
+
+class ReportUpdateRequest(BaseModel):
+    """Request payload to update an editable draft report."""
+    title: Optional[str] = Field(None, min_length=1)
+    period_label: Optional[str] = None
+    researcher_notes: Optional[str] = None
+    selected_run_ids: Optional[List[str]] = None
+
+
+class ReportSummaryItem(BaseModel):
+    """List item for saved curated benchmark reports."""
+    report_id: str
+    title: str
+    period_label: str = ""
+    researcher_notes: str = ""
+    status: str = "draft"
+    selected_run_ids: List[str] = Field(default_factory=list)
+    run_count: int = 0
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    published_at: Optional[str] = None
+
+
+class ReportDetailResponse(ReportSummaryItem):
+    """Detailed report payload including parity warnings, metrics, slices, and metadata-only failure summaries."""
+    pruned_run_ids: List[str] = Field(default_factory=list)
+    dossier: Dict[str, Any] = Field(default_factory=dict)
+    markdown_preview: str = ""

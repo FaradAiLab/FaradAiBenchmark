@@ -1,14 +1,14 @@
-# ISSUE-004: 10.000+ Ölçekli DuckDB İlişkisel Depolama (run_case_evaluations)
+# ISSUE-004: 10,000+ Scale DuckDB Relational Storage (run_case_evaluations)
 
 ## Parent
-[SPEC-0002: Hibrit Güvenlik Motoru (L1/L2) ve Büyük Ölçekli Karşılaştırmalı Benchmark Platformu](../specs/hybrid-guard-and-discrepancy-benchmark-spec.md)
+[SPEC-0002: Hybrid Security Engine (L1/L2) and Large-Scale Comparative Benchmark Platform](../specs/hybrid-guard-and-discrepancy-benchmark-spec.md)
 
 ## What to build
-Benchmark koşumlarında 10.000+ test vakasının bellek ve disk şişmesi olmadan saklanabilmesi ve hızlı sorgulanabilmesi için DuckDB şemasını iki ilişkisel tabloya ayırmak:
-1. `run_history`: Koşum bazında makro metrikleri (F1, Precision, Recall, FPR, Latency, Category Stats) saklar.
-2. `run_case_evaluations`: Her bir test vakasının bireysel sonucunu ilişkisel olarak saklar (`run_id, case_id, domain, analysis_tier, is_malicious, predicted_blocked, correct, decided_by, confidence, latency_ms`).
+Split the DuckDB schema into two relational tables so that 10,000+ test cases in benchmark runs can be stored and queried quickly without memory or disk bloat:
+1. `run_history`: Stores macro metrics per run (F1, Precision, Recall, FPR, Latency, Category Stats).
+2. `run_case_evaluations`: Stores the individual evaluation result for each test case relationally (`run_id, case_id, domain, analysis_tier, is_malicious, predicted_blocked, correct, decided_by, confidence, latency_ms`).
 
-`web/app.py` benchmark yürütme motorunu, koşum bittiğinde tüm vaka sonuçlarını `run_case_evaluations` tablosuna yüksek hızlı toplu yazma (bulk insert) yapacak şekilde güncellemek.
+Update the `web/app.py` benchmark execution engine to perform high-speed bulk inserts of all case results into `run_case_evaluations` when a run completes.
 
 ```sql
 -- Schema Reference (ADR 0004)
@@ -29,11 +29,11 @@ CREATE INDEX IF NOT EXISTS idx_case_eval_lookup ON run_case_evaluations (run_id,
 ```
 
 ## Acceptance criteria
-- [x] `run_case_evaluations` tablosu DuckDB veritabanında oluşturulmuş ve indekslenmiştir (`idx_case_eval_lookup`).
-- [x] `web/app.py` benchmark motoru her koşum sonunda tüm değerlendirme satırlarını PyArrow vektörel tablosu ile bu tabloya toplu aktarır.
-- [x] 10.000 satırlık bir test kümesi tamamlandığında toplu yazma süresi 1 saniyenin altındadır (PyArrow ile ~66ms ölçülmüştür, 15x SLA marjı).
-- [x] Geçmiş koşum silindiğinde (`DELETE /api/runs/{id}`) ilişkili tüm `run_case_evaluations` satırları da temizlenir (Unit test ile doğrulandı).
-- [x] `/api/runs/{id}` endpoint'i geriye uyumlu kalarak vaka örneklerini bu tablodan dinamik olarak okur.
+- [x] `run_case_evaluations` table is created and indexed (`idx_case_eval_lookup`) in DuckDB.
+- [x] `web/app.py` benchmark engine bulk-inserts all evaluation rows via a PyArrow vectorized table at the end of each run.
+- [x] Bulk write time for a 10,000-row test suite is under 1 second (measured ~66ms with PyArrow, 15x SLA margin).
+- [x] When a past run is deleted (`DELETE /api/runs/{id}`), all associated `run_case_evaluations` rows are also cleaned up (verified via unit test).
+- [x] The `/api/runs/{id}` endpoint remains backward-compatible and dynamically reads case samples from this table.
 
 ## Blocked by
-- [ISSUE-003: Kademeli Fail-Fast Hibrit Güvenlik Motoru (HybridCascadeAdapter)](./ISSUE-003-fail-fast-cascade-hybrid-engine.md) (Done)
+- [ISSUE-003: Fail-Fast Cascading Hybrid Security Engine (HybridCascadeAdapter)](./ISSUE-003-fail-fast-cascade-hybrid-engine.md) (Done)

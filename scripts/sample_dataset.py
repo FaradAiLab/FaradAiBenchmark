@@ -8,6 +8,7 @@ with zero-copy in-memory SQL execution.
 """
 
 import argparse
+import sys
 from pathlib import Path
 
 import duckdb
@@ -17,6 +18,8 @@ from rich.table import Table
 console = Console()
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
 MASTER_PARQUET = PROCESSED_DIR / "master_benchmark.parquet"
 

@@ -1,52 +1,48 @@
-# Implementation Plan: Generic Cloud Decision Model Benchmarking (Phase 8)
+# Implementation Plan: Web Studio Redesign — Models Dashboard & Periodic AI-Ready Report Studio (Phase 9)
 
-* **Feature:** Generic Cloud System One Decision Model Benchmarking (`typesafe/jev-1.14` & multi-provider support)
+* **Feature:** Unified `Models` Tab (Local Read-Only + Cloud CRUD) & Read-Only Periodic `Report Studio` (Replacing `Matrix Studio` Web UI)
 * **Governing Specification:** [SPEC.md](../../SPEC.md)
-* **Related ADR:** [ADR 0011: Generic Cloud Decision Model Architecture & System One Wire Parity](../adr/0011-generic-cloud-decision-model-architecture.md)
+* **Related ADR:** [ADR 0012: Web Studio Redesign — Models CRUD Dashboard & Periodic AI-Ready Report Studio](../adr/0012-web-studio-models-crud-and-periodic-report-studio.md)
 * **Canonical Plan:** [tasks/plan.md](../../tasks/plan.md)
-* **Status:** Awaiting Human Approval
+* **Status:** Implemented & Verified
 
 ---
 
 ## 1. Overview & Architecture
-Decomposes Phase 8 into 9 atomic vertical slices across 4 modules (`eval-status-and-state-parity`, `cloud-provider-registry`, `systemone-cloud-adapter`, `cloud-matrix-execution`) so any cloud System One model can be registered in DuckDB/YAML without Python edits, benchmarked with scientific parity against local Apple Silicon runs, and bounded by atomic budget caps and deterministic `--resume-run-id`.
+Decomposes Phase 9 into **7 atomic vertical tasks** across 4 modules (`db-hardening-and-parity-schema`, `cloud-models-crud-api`, `report-studio-backend-and-bundle`, `web-studio-ui-redesign`) to deliver a DuckDB-backed Cloud Models CRUD dashboard and a read-only periodic `Report Studio` (`draft` → `published` sealed snapshots + metadata-only AI-Ready Markdown & JSON Bundle) while retiring `Matrix Studio` from the Web UI and keeping `benchmark_matrix.py` CLI intact.
 
 ---
 
 ## 2. Dependency Graph & Implementation Order
 
 ```text
-[Task 1: Runtime Deps (pyproject.toml) + WF-005 Live OpenRouter Wire Check]
+[Task 1: Cloud Registry Hardening & run_history Parity Columns]
         │
-        ├──────────────────────────────┐
-        ▼                              ▼
-[Task 2: EvalStatus &           [Task 4: DuckDB Cloud Registry,
- format_decision_state()]        Secret Hygiene & Seed YAML]
-        │                              │
-        ▼                              ▼
-[Task 3: Refusal & State        [Task 5: manage_cloud_models.py CLI &
- Parity in Local/MCP]            Unified resolve_adapter()]
-        │                              │
-        ▼                              ▼
-[🛑 Checkpoint 1]              [🛑 Checkpoint 2]
-                                       │
-                                       ▼
-                               [Task 6: TDD RED - SystemOneCloudAdapter]
-                                       │
-                                       ▼
-                               [Task 7: TDD GREEN - SystemOneCloudAdapter]
-                                       │
-                                       ▼
-                               [🛑 Checkpoint 3]
-                                       │
-                                       ▼
-[Task 8: Cloud Matrix Concurrency, Budget Cap, Single Writer & --resume-run-id]
-                                       │
-                                       ▼
-[Task 9: Web Schema Parity, Explicit-Column INSERT & asyncio.to_thread]
-                                       │
-                                       ▼
-                               [🛑 Checkpoint 4: Full Regression & Smoke Run]
+        ▼
+[Task 2: web/app.py load_dotenv, DB_WRITE_LOCK & Paginated /api/runs]
+        │
+        ▼
+[🛑 Checkpoint 1: Core DB & History Parity Verified]
+        │
+        ├──────────────────────────────────────┐
+        ▼                                      ▼
+[Task 3: FastAPI Cloud Providers       [Task 4: adapters/report_registry.py
+ & Cloud Models CRUD API + Tests]       Lifecycle, Parity Guard & Bundle]
+        │                                      │
+        ▼                                      ▼
+[🛑 Checkpoint 2: Cloud CRUD API]      [Task 5: FastAPI /api/reports*
+        │                               Endpoints & Export Tests]
+        │                                      │
+        │                                      ▼
+        │                              [🛑 Checkpoint 3: Report API]
+        │                                      │
+        ▼                                      ▼
+[Task 6: Models Tab UI (Local          [Task 7: Retire Matrix Studio UI ->
+ Read-Only + Cloud CRUD Modals)]        Report Studio + Paginated History]
+        │                                      │
+        └──────────────────┬───────────────────┘
+                           ▼
+        [🛑 Checkpoint 4: Full make test-unit & ruff check]
 ```
 
 See [tasks/plan.md](../../tasks/plan.md) and [tasks/todo.md](../../tasks/todo.md) for full risk table, acceptance criteria, and verification commands.
