@@ -322,6 +322,14 @@ async def execute_benchmark(run_id: str, dataset_path: str, model_name: str, tie
     finally:
         data_con.close()
 
+    from benchmark_runner import (
+        ADAPTER_REGISTRY,
+        HybridCascadeAdapter,
+        L1StaticAdapter,
+        stratified_shuffle_records,
+    )
+
+    records = stratified_shuffle_records(records)
     total = len(records)
     with db_write_session() as wcon:
         wcon.execute("UPDATE run_history SET total_cases = ?, status = 'running' WHERE run_id = ?", [total, run_id])
@@ -329,8 +337,6 @@ async def execute_benchmark(run_id: str, dataset_path: str, model_name: str, tie
     await broadcast({"type": "run_started", "run_id": run_id, "total_cases": total})
 
     # Initialize model adapter explicitly without silent MockSecurityAdapter fallback
-    from benchmark_runner import ADAPTER_REGISTRY, HybridCascadeAdapter, L1StaticAdapter
-
     is_cloud = is_cloud_model(model_name, DB_PATH)
     try:
         if model_name.lower() in ("l1-rules", "l1_rules"):

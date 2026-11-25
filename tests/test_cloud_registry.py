@@ -168,10 +168,21 @@ def test_default_seed_yaml_imports_cleanly(temp_db: Path):
     assert seed_path.exists()
     counts = import_cloud_config(seed_path, temp_db)
     assert counts["providers"] >= 3
-    assert counts["models"] >= 3
+    assert counts["models"] >= 7
     jev = get_cloud_model("or-jev-1.14", temp_db)
     assert jev is not None
     assert jev.remote_model_slug == "typesafe/jev-1.14"
+
+    expected_new_models = {
+        "or-baseten-bison-1": "baseten/bison-1",
+        "or-baseten-groundhog-1": "baseten/groundhog-1",
+        "or-cloudflare-clef": "cloudflare/clef",
+        "or-cloudflare-clef-flash": "cloudflare/clef-flash",
+    }
+    for model_id, expected_slug in expected_new_models.items():
+        model = get_cloud_model(model_id, temp_db)
+        assert model is not None
+        assert model.remote_model_slug == expected_slug
 
 
 def test_lowercase_id_normalization_prevents_duplicate_pks(temp_db: Path):

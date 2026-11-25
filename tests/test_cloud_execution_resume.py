@@ -97,8 +97,23 @@ def test_load_test_cases_is_deterministic_ordered(tmp_path: Path):
         "is_malicious": [False, False, False],
     }
     pq.write_table(pa.Table.from_pydict(rows), pq_path)
-    loaded = load_test_cases(pq_path, limit=3)
-    assert [r[0] for r in loaded] == ["case-001", "case-002", "case-003"]
+    loaded_unshuffled = load_test_cases(pq_path, limit=3, shuffle=False)
+    assert [r[0] for r in loaded_unshuffled] == ["case-001", "case-002", "case-003"]
+
+    pq_path_alt = tmp_path / "shuffled_alt.parquet"
+    rows_alt = {
+        "id": ["case-002", "case-003", "case-001"],
+        "source_dataset": ["s", "s", "s"],
+        "threat_domain": ["BENIGN", "BENIGN", "BENIGN"],
+        "analysis_tier": ["STATIC_CAPABLE"] * 3,
+        "cwe": ["BENIGN"] * 3,
+        "tool_name": ["read_file"] * 3,
+        "tool_arguments": ["{}"] * 3,
+        "context": [""] * 3,
+        "is_malicious": [False, False, False],
+    }
+    pq.write_table(pa.Table.from_pydict(rows_alt), pq_path_alt)
+    assert load_test_cases(pq_path) == load_test_cases(pq_path_alt)
 
 
 def test_concurrent_cloud_matrix_run_persists_cost_tier_and_excludes_refusals(tmp_path: Path, monkeypatch):
@@ -224,16 +239,17 @@ def test_resume_run_skips_completed_retries_errors_and_blocks_config_drift(tmp_p
     _write_sample_parquet(pq_path, count=5)
     con = _setup_cloud_db(tmp_path / "resume.duckdb", monkeypatch, max_concurrency=2)
     records = load_test_cases(pq_path)
+    failing_path = json.loads(next(r[6] for r in records[:3] if not r[8]))["path"]
 
     seen_calls: list[str] = []
-    fail_case_001 = True
+    fail_target = True
 
     def handler(req: httpx.Request) -> httpx.Response:
-        nonlocal fail_case_001
+        nonlocal fail_target
         body = json.loads(req.content.decode("utf-8"))
         state_str = str(body["state"])
         seen_calls.append(state_str)
-        if "doc_1.txt" in state_str and fail_case_001:
+        if failing_path in state_str and fail_target:
             return httpx.Response(500, text="transient failure")
         is_mal = "/etc/passwd" in state_str
         return httpx.Response(
@@ -274,9 +290,9 @@ def test_resume_run_skips_completed_retries_errors_and_blocks_config_drift(tmp_p
                 resume_run_id=run_id,
             )
 
-        # Now resume cleanly with matching config: case-000 & case-002 skipped, case-001 retried, case-003 & case-004 run
+        # Now resume cleanly with matching config: prior OKs skipped, prior ERROR retried, remaining run
         seen_calls.clear()
-        fail_case_001 = False
+        fail_target = False
         resumed = evaluate_model_on_cases(
             model_key="or-jev-test",
             records=records,
